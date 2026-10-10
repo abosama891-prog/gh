@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type ExcelJS from 'exceljs';
-import { ArrowRight, CarFront, Download, Fuel, LayoutDashboard, RefreshCw, UsersRound } from 'lucide-react';
+import { ArrowRight, CarFront, Download, Fuel, LayoutDashboard, LogOut, Pencil, RefreshCw, Settings, Trash2, Upload } from 'lucide-react';
 import { readFleetUsers, saveFleetUsers } from '../../services/fleetUserStore';
 import type { FleetRole, FleetUser } from '../../services/fleetUserStore';
 import { isFirebaseConfigured } from '../../services/firebase';
-import { readCloudFleetData, saveCloudFleetData } from '../../services/fleetCloudStore';
+import { readCloudFleetData, saveCloudFleetData, saveCloudFleetDataStrict } from '../../services/fleetCloudStore';
 import { firebaseAuth } from '../../services/firebase';
 import { sendPasswordResetEmail, updatePassword } from 'firebase/auth';
 import { applyUpdate } from '../../services/serviceWorker';
@@ -219,6 +219,43 @@ const parseTemplateNumber = (value: string) => {
   return Number(westernDigits);
 };
 
+const normalizeTemplateDate = (value: string): string | null => {
+  const normalized = value
+    .trim()
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)));
+  const isoDate = normalized.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:[T\s].*)?$/);
+  let year: number;
+  let month: number;
+  let day: number;
+  if (isoDate) {
+    year = Number(isoDate[1]);
+    month = Number(isoDate[2]);
+    day = Number(isoDate[3]);
+  } else {
+    const dayFirstDate = normalized.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+    if (!dayFirstDate) return null;
+    const first = Number(dayFirstDate[1]);
+    const second = Number(dayFirstDate[2]);
+    year = Number(dayFirstDate[3]);
+    if (year < 100) year += year < 50 ? 2000 : 1900;
+    if (first > 12) {
+      day = first;
+      month = second;
+    } else if (second > 12) {
+      month = first;
+      day = second;
+    } else {
+      day = first;
+      month = second;
+    }
+  }
+  if (year < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
 const parseAmountExpression = (value: string): number | null => {
   const normalized = value
     .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
@@ -260,15 +297,13 @@ const fleetSections = [
   { key: 'entries', label: 'سجل التعبئة', description: 'حركات الوقود المسجلة', Icon: Fuel },
 ] as const;
 const fleetHomeActions = [
-  { key: 'users', label: 'إدارة المستخدمين والصلاحيات', description: 'إدارة الحسابات والأدوار', Icon: UsersRound },
-  { key: 'update', label: 'تحديث النظام', description: 'التحقق من أحدث نسخة', Icon: RefreshCw },
-  { key: 'install', label: 'تثبيت التطبيق', description: 'إضافة التطبيق إلى جهازك', Icon: Download },
+  { key: 'users', label: 'إدارة المستخدمين والصلاحيات', description: 'إدارة الحسابات والأدوار', Icon: Settings },
 ] as const;
 const fleetRoleLabels: Record<FleetRole, string> = { admin: 'مدير النظام', manager: 'مدير فرع', viewer: 'مشاهد', accountant: 'محاسب', warehouse: 'مسؤول مخزن' };
 
 type CarFuelPageProps = { onLogout?: () => void; currentUser?: FleetUser };
 type LedgerPeriod = 'all' | 'month' | 'custom';
-type FleetRoute = { tab: 'home' | 'overview' | 'vehicles' | 'entries' | 'users'; selectedVehicleId: string | null };
+type FleetRoute = { tab: 'home' | 'overview' | 'vehicles' | 'entries' | 'users'; selectedVehicleId: string | null; entryPage?: boolean };
 type FleetHistoryState = { fleetRoute?: FleetRoute };
 
 const dateInputValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -279,6 +314,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
   const [tab, setTab] = useState<'home' | 'overview' | 'vehicles' | 'entries' | 'users'>('home');
   const routeHistoryRef = useRef<FleetRoute | null>(null);
   const skipRoutePushRef = useRef(false);
+  const exitConfirmedRef = useRef(false);
+  const currentTabRef = useRef(tab);
+  currentTabRef.current = tab;
   const [users, setUsers] = useState<FleetUser[]>(readFleetUsers);
   const [newUser, setNewUser] = useState({ username: '', employeeName: '', password: '', role: 'viewer' as FleetRole });
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -291,12 +329,17 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
   const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
   const theme = themePresets[themeKey];
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [expandedVehicleCardId, setExpandedVehicleCardId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [ledgerFilters, setLedgerFilters] = useState({ vehicleId: 'all', from: '', to: '', search: '' });
   const [ledgerPeriod, setLedgerPeriod] = useState<LedgerPeriod>('all');
   const [ledgerMonthYear, setLedgerMonthYear] = useState('');
   const [isLedgerMonthPickerOpen, setIsLedgerMonthPickerOpen] = useState(false);
   const [ledgerPickerYear, setLedgerPickerYear] = useState(new Date().getFullYear());
+  const [monthlySummaryMonth, setMonthlySummaryMonth] = useState(() => dateInputValue(new Date()).slice(0, 7));
+  const [isMonthlySummaryPickerOpen, setIsMonthlySummaryPickerOpen] = useState(false);
+  const [monthlySummaryPickerYear, setMonthlySummaryPickerYear] = useState(new Date().getFullYear());
+  const monthlySummaryMonthSelectedRef = useRef(false);
   const [vehicleDialog, setVehicleDialog] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const vehicleImportRef = useRef<HTMLInputElement>(null);
@@ -317,6 +360,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
   const [entryPlateSearch, setEntryPlateSearch] = useState('');
   const [fuelAmountDraft, setFuelAmountDraft] = useState('');
   const [expenseAmountDrafts, setExpenseAmountDrafts] = useState<ExpenseInputs>(emptyExpenseInputs);
+  const [expandedExpenseKey, setExpandedExpenseKey] = useState<keyof ExpenseBreakdown | null>(null);
   const canManageUsers = currentUser.role === 'admin';
   const canEditFleet = currentUser.role !== 'viewer';
 
@@ -327,7 +371,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
   }, []);
 
   useEffect(() => {
-    const currentRoute: FleetRoute = { tab, selectedVehicleId };
+    const currentRoute: FleetRoute = { tab, selectedVehicleId, entryPage: entryDialog };
     const historyState = window.history.state as FleetHistoryState | null;
     if (!routeHistoryRef.current) {
       window.history.replaceState({ ...historyState, fleetRoute: currentRoute }, '');
@@ -337,16 +381,33 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
 
     const previousRoute = routeHistoryRef.current;
     routeHistoryRef.current = currentRoute;
-    if (!previousRoute || (previousRoute.tab === tab && previousRoute.selectedVehicleId === selectedVehicleId)) return;
+    if (!previousRoute || (previousRoute.tab === tab && previousRoute.selectedVehicleId === selectedVehicleId && previousRoute.entryPage === entryDialog)) return;
     if (skipRoutePushRef.current) {
       skipRoutePushRef.current = false;
       return;
     }
     window.history.pushState({ fleetRoute: currentRoute }, '');
-  }, [selectedVehicleId, tab]);
+  }, [entryDialog, selectedVehicleId, tab]);
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      if (exitConfirmedRef.current) {
+        exitConfirmedRef.current = false;
+        return;
+      }
+
+      if (currentTabRef.current === 'home' && window.matchMedia('(max-width: 768px)').matches) {
+        const shouldExit = window.confirm('هل تريد الخروج من التطبيق؟');
+        if (!shouldExit) {
+          const currentRoute = routeHistoryRef.current;
+          if (currentRoute) window.history.pushState({ fleetRoute: currentRoute }, '');
+          return;
+        }
+        exitConfirmedRef.current = true;
+        window.history.back();
+        return;
+      }
+
       const historyState = event.state as FleetHistoryState | null;
       const previousRoute = historyState?.fleetRoute;
       if (!previousRoute) return;
@@ -354,6 +415,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
       skipRoutePushRef.current = true;
       setTab(previousRoute.tab);
       setSelectedVehicleId(previousRoute.selectedVehicleId);
+      setEntryDialog(previousRoute.entryPage ?? false);
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -365,6 +427,14 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
     const storedFontSize = localStorage.getItem(`${themeStorageKey}-font`) as FontSizeKey | null;
     setFontSizeKey(storedFontSize && storedFontSize in fontSizePresets ? storedFontSize : 'medium');
   }, [themeStorageKey]);
+
+  useEffect(() => {
+    if (!cloudLoaded || monthlySummaryMonthSelectedRef.current || data.entries.length === 0) return;
+    const latestEntryMonth = data.entries.reduce((latest, entry) => entry.date.slice(0, 7) > latest ? entry.date.slice(0, 7) : latest, '');
+    if (!latestEntryMonth) return;
+    setMonthlySummaryMonth(latestEntryMonth);
+    setMonthlySummaryPickerYear(Number(latestEntryMonth.slice(0, 4)));
+  }, [cloudLoaded, data.entries]);
 
   const chooseTheme = (nextTheme: ThemeKey) => {
     setThemeKey(nextTheme);
@@ -563,6 +633,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
   const selectedEntries = data.entries
     .filter((entry) => entry.vehicleId === selectedVehicleId)
     .sort((a, b) => b.date.localeCompare(a.date));
+  const selectedAdditionalExpenses = selectedEntries.reduce((total, entry) => total + sumExpenses(entry.expenses), 0);
   const selectedEntryDetails = selectedEntries.slice().reverse().reduce<Array<{
     entry: FuelEntry;
     distance: number;
@@ -648,16 +719,53 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
     ...data.entries.map((entry) => Number(entry.date.slice(0, 4))),
     new Date().getFullYear(),
   ])).filter(Number.isInteger).sort((a, b) => b - a);
+  const monthlyVehicleSummaries = useMemo(() => data.vehicles.map((vehicle) => {
+    const entries = data.entries.filter((entry) => entry.vehicleId === vehicle.id && entry.date.startsWith(monthlySummaryMonth));
+    const expenses = Object.fromEntries(expenseFields.map(({ key }) => [
+      key,
+      entries.reduce((total, entry) => total + (Number(entry.expenses?.[key]) || 0), 0),
+    ])) as ExpenseBreakdown;
+    return {
+      vehicle,
+      entries,
+      fuel: entries.reduce((total, entry) => total + entryFuelCost(entry), 0),
+      expenses,
+      distance: entries.reduce((total, entry) => total + Math.max(0, entry.currentOdometer - entry.startOdometer), 0),
+      liters: entries.reduce((total, entry) => total + litersForEntry(entry, vehicle), 0),
+    };
+  }), [data.entries, data.vehicles, monthlySummaryMonth]);
+  const monthlySummaryTotals = monthlyVehicleSummaries.reduce((total, summary) => ({
+    fuel: total.fuel + summary.fuel,
+    expenses: total.expenses + sumExpenses(summary.expenses),
+    distance: total.distance + summary.distance,
+    liters: total.liters + summary.liters,
+    categories: Object.fromEntries(expenseFields.map(({ key }) => [
+      key,
+      total.categories[key] + summary.expenses[key],
+    ])) as ExpenseBreakdown,
+  }), { fuel: 0, expenses: 0, distance: 0, liters: 0, categories: emptyExpenses() });
 
   const startEntry = (vehicleId = data.vehicles[0]?.id) => {
     const summary = summaries.find((item) => item.vehicle.id === vehicleId);
     const start = summary?.lastOdometer ?? 0;
+    const entryDate = today();
     setEditingEntryId(null);
     setFuelAmountDraft('');
     setEntryPlateSearch('');
     setExpenseAmountDrafts(emptyExpenseInputs());
-    setEntryForm({ vehicleId: vehicleId ?? '', driver: summaries.find((item) => item.vehicle.id === vehicleId)?.vehicle.driver || '', startOdometer: String(start), currentOdometer: '', liters: '0.0', pricePerLiter: '0', fuelActualValue: '', allowanceValue: '', date: today(), route: '', note: '', expenses: emptyExpenseInputs() });
+    setExpandedExpenseKey(null);
+    setEntryForm({ vehicleId: vehicleId ?? '', driver: summaries.find((item) => item.vehicle.id === vehicleId)?.vehicle.driver || '', startOdometer: String(start), currentOdometer: '', liters: '0.0', pricePerLiter: '0', fuelActualValue: '', allowanceValue: '', date: entryDate, route: '', note: '', expenses: emptyExpenseInputs() });
     setEntryDialog(true);
+  };
+
+  const closeEntryPage = () => {
+    setEditingEntryId(null);
+    const currentRoute = (window.history.state as FleetHistoryState | null)?.fleetRoute;
+    if (currentRoute?.entryPage) {
+      window.history.back();
+      return;
+    }
+    setEntryDialog(false);
   };
 
   const editEntry = (entry: FuelEntry) => {
@@ -665,6 +773,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
     setEditingEntryId(entry.id);
     setFuelAmountDraft('');
     setExpenseAmountDrafts(emptyExpenseInputs());
+    setExpandedExpenseKey(null);
     setEntryForm({
       vehicleId: entry.vehicleId,
       driver: entry.driver || vehicle?.driver || '',
@@ -781,24 +890,39 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
         const plate = (row[column('رقم اللوحة')] || '').trim();
         const name = (row[column('اسم السيارة')] || '').trim();
         const driver = (row[column('اسم السائق')] || '').trim();
-        const openingOdometer = parseTemplateNumber(row[column('بداية العداد')] || '');
-        const kmPerLiter = parseTemplateNumber(row[column('معدل الاستهلاك (كم/لتر)')] || '');
+        const openingOdometerText = (row[column('بداية العداد')] || '').trim();
+        const kmPerLiterText = (row[column('معدل الاستهلاك (كم/لتر)')] || '').trim();
+        const openingOdometer = parseTemplateNumber(openingOdometerText);
+        const kmPerLiter = parseTemplateNumber(kmPerLiterText);
         if (!plate && !name && !row.some((value) => value.trim())) return;
 
-        if (!plate || !name || !Number.isFinite(openingOdometer) || openingOdometer < 0 || !Number.isFinite(kmPerLiter) || kmPerLiter <= 0) {
-          rowErrors.push(String(index + 2));
+        const errors: string[] = [];
+        if (!plate) errors.push('رقم اللوحة مطلوب');
+        if (!name) errors.push('اسم السيارة مطلوب');
+        if (!openingOdometerText || !Number.isFinite(openingOdometer) || openingOdometer < 0) errors.push('بداية العداد يجب أن تكون رقمًا غير سالب');
+        if (!kmPerLiterText || !Number.isFinite(kmPerLiter) || kmPerLiter <= 0) errors.push('معدل الاستهلاك يجب أن يكون أكبر من صفر');
+        if (errors.length) {
+          rowErrors.push(`صف ${index + 2}: ${errors.join('، ')}`);
           return;
         }
         const normalizedPlate = plate.toLocaleLowerCase('ar-EG');
         if (seenPlates.has(normalizedPlate)) {
-          rowErrors.push(String(index + 2));
+          rowErrors.push(`صف ${index + 2}: رقم اللوحة مكرر داخل الملف`);
           return;
         }
         seenPlates.add(normalizedPlate);
-        imported.push({ plate, name, driver, openingOdometer, kmPerLiter });
+        imported.push({
+          plate,
+          name,
+          driver,
+          openingOdometer,
+          kmPerLiter,
+          fuelLitersPer105Km: 105 / kmPerLiter,
+          fuelDistanceBaseKm: 105,
+        });
       });
 
-      if (rowErrors.length) throw new Error(`راجع بيانات الصفوف التالية (رقم اللوحة والاسم والعداد ومعدل الاستهلاك): ${rowErrors.join('، ')}`);
+      if (rowErrors.length) throw new Error(`تعذر استيراد السيارات بسبب الأخطاء التالية:\n${rowErrors.join('\n')}`);
       if (!imported.length) throw new Error('لا توجد سيارات صالحة للاستيراد.');
 
       const existingPlates = new Set(data.vehicles.map((vehicle) => vehicle.plate.trim().toLocaleLowerCase('ar-EG')));
@@ -949,17 +1073,19 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
     setIsImportingVehicleHistory(true);
     try {
       let rows: string[][];
+      let vehicleInfoRows: string[][] | undefined;
       if (/\.xlsx$/i.test(file.name)) {
         const ExcelJS = (await import('exceljs')).default;
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(await file.arrayBuffer());
-        const worksheet = workbook.getWorksheet('سجل السيارة') || workbook.worksheets.find((sheet) => sheet.name !== 'بيانات السيارة');
+        const infoSheet = workbook.getWorksheet('بيانات السيارة');
+        const worksheet = workbook.getWorksheet('سجل السيارة');
         if (!worksheet) throw new Error('لم أجد ورقة سجل السيارة داخل ملف Excel.');
         rows = worksheetToRows(worksheet);
+        if (infoSheet) vehicleInfoRows = worksheetToRows(infoSheet);
       } else {
         rows = parseCsvRows(await file.text());
       }
-      if (rows.length < 2) throw new Error('القالب لا يحتوي على حركات.');
       const headerRowIndex = rows.findIndex((row) => row.some((value) => value.trim() === 'معرف الحركة'));
       if (headerRowIndex < 0) throw new Error('لم أجد صف عناوين قالب الحركات.');
       const headers = rows[headerRowIndex].map((value) => value.trim());
@@ -974,51 +1100,135 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
       const oldEntries = data.entries.filter((entry) => entry.vehicleId === vehicle.id);
       const oldIds = new Set(oldEntries.map((entry) => entry.id));
       const seenIds = new Set<string>();
+      const usedIds = new Set(data.entries.map((entry) => entry.id));
       const imported: FuelEntry[] = [];
       const errors: string[] = [];
+      let skippedRows = 0;
+      let importedVehicle = vehicle;
+
+      if (vehicleInfoRows) {
+        const info = vehicleInfoRows[2] || [];
+        const settings = vehicleInfoRows[3] || [];
+        const rowErrors: string[] = [];
+        if (info[0]?.trim() !== 'رقم اللوحة' || info[2]?.trim() !== 'اسم السيارة' || info[4]?.trim() !== 'اسم السائق'
+          || settings[0]?.trim() !== 'بداية العداد' || settings[2]?.trim() !== 'معدل الاستهلاك (كم/لتر)') {
+          rowErrors.push('ورقة بيانات السيارة لا تطابق القالب المعتمد');
+        }
+        const importedPlate = (info[1] || '').trim();
+        const importedName = (info[3] || '').trim();
+        const openingOdometerText = (settings[1] || '').trim();
+        const kmPerLiterText = (settings[3] || '').trim();
+        const openingOdometer = parseTemplateNumber(openingOdometerText);
+        const kmPerLiter = parseTemplateNumber(kmPerLiterText);
+        if (importedPlate.toLocaleLowerCase('ar-EG') !== vehicle.plate.trim().toLocaleLowerCase('ar-EG')) {
+          rowErrors.push(`رقم اللوحة يجب أن يطابق السيارة المحددة (${vehicle.plate})`);
+        }
+        if (!importedName) rowErrors.push('اسم السيارة مطلوب في ورقة بيانات السيارة');
+        if (!openingOdometerText || !Number.isFinite(openingOdometer) || openingOdometer < 0) rowErrors.push('بداية العداد يجب أن تكون رقمًا صحيحًا غير سالب');
+        if (!kmPerLiterText || !Number.isFinite(kmPerLiter) || kmPerLiter <= 0) rowErrors.push('معدل الاستهلاك يجب أن يكون أكبر من صفر');
+        if (rowErrors.length) throw new Error(`خطأ في بيانات السيارة: ${rowErrors.join('، ')}`);
+        importedVehicle = {
+          ...vehicle,
+          plate: importedPlate,
+          name: importedName,
+          driver: (info[5] || '').trim(),
+          openingOdometer,
+          kmPerLiter,
+          fuelLitersPer105Km: 105 / kmPerLiter,
+          fuelDistanceBaseKm: 105,
+        };
+      }
 
       rows.slice(headerRowIndex + 1).forEach((row, index) => {
         const value = (header: string) => (row[column(header)] || '').trim();
-        const hasMovement = ['التاريخ', 'القراءة السابقة', 'القراءة الحالية', 'مصروف الوقود الفعلي (جنيه)'].some((header) => value(header) !== '');
+        const editableHeaders = [
+          'معرف الحركة', 'التاريخ', 'اسم السائق', 'خط السير',
+          'القراءة السابقة', 'القراءة الحالية', 'مصروف الوقود الفعلي (جنيه)', 'التفصيل',
+          ...expenseFields.map((field) => `${field.label} (جنيه)`),
+        ];
+        const hasMovement = editableHeaders.some((header) => value(header) !== '');
         if (!hasMovement) return;
+        const lineNumber = index + headerRowIndex + 2;
+        const rawDate = value('التاريخ');
+        const startText = value('القراءة السابقة');
+        const currentText = value('القراءة الحالية');
+        if (!rawDate || !startText || !currentText) {
+          skippedRows += 1;
+          return;
+        }
         const rowPlate = value('رقم اللوحة').toLocaleLowerCase('ar-EG');
-        const date = value('التاريخ');
-        const start = parseTemplateNumber(value('القراءة السابقة'));
-        const current = parseTemplateNumber(value('القراءة الحالية'));
-        const actualFuelValue = parseTemplateNumber(value('مصروف الوقود الفعلي (جنيه)'));
-        if (rowPlate !== vehicle.plate.trim().toLocaleLowerCase('ar-EG') || !date || !Number.isFinite(start) || !Number.isFinite(current) || current < start || !Number.isFinite(actualFuelValue) || actualFuelValue < 0) {
-          errors.push(String(index + headerRowIndex + 2));
+        const start = parseTemplateNumber(startText);
+        const current = parseTemplateNumber(currentText);
+        const actualFuelText = value('مصروف الوقود الفعلي (جنيه)');
+        const actualFuelValue = actualFuelText ? parseTemplateNumber(actualFuelText) : 0;
+        const rowErrors: string[] = [];
+        if (rowPlate !== vehicle.plate.trim().toLocaleLowerCase('ar-EG')) rowErrors.push('رقم اللوحة لا يطابق السيارة المحددة');
+        const date = normalizeTemplateDate(rawDate);
+        if (!date) rowErrors.push('التاريخ غير صحيح (استخدم YYYY-MM-DD أو DD/MM/YYYY)');
+        if (!Number.isFinite(start) || start < 0) rowErrors.push('القراءة السابقة غير صحيحة');
+        if (!Number.isFinite(current) || current < 0 || current < start) rowErrors.push('القراءة الحالية يجب أن تكون أكبر من أو تساوي القراءة السابقة');
+        if (!Number.isFinite(actualFuelValue) || actualFuelValue < 0) rowErrors.push('مصروف الوقود الفعلي غير صحيح');
+        const expenses = {} as ExpenseBreakdown;
+        expenseFields.forEach((field) => {
+          const rawAmount = value(`${field.label} (جنيه)`);
+          const amount = rawAmount ? parseTemplateNumber(rawAmount) : 0;
+          if (!Number.isFinite(amount) || amount < 0) rowErrors.push(`${field.label} غير صحيح`);
+          else expenses[field.key] = Math.round(amount);
+        });
+        if (rowErrors.length) {
+          errors.push(`صف ${lineNumber}: ${rowErrors.join('، ')}`);
           return;
         }
         const suppliedId = value('معرف الحركة');
         if (suppliedId && seenIds.has(suppliedId)) {
-          errors.push(String(index + headerRowIndex + 2));
+          errors.push(`صف ${lineNumber}: معرف الحركة مكرر`);
           return;
         }
         if (suppliedId) seenIds.add(suppliedId);
-        const id = suppliedId && oldIds.has(suppliedId) ? suppliedId : `e${Date.now()}-${index}`;
-        const liters = calculateFuelLiters(vehicle.id, start, current);
-        const expenses = Object.fromEntries(expenseFields.map((field) => [field.key, Math.max(0, Math.round(parseTemplateNumber(value(`${field.label} (جنيه)`)) || 0))])) as ExpenseBreakdown;
+        let id = suppliedId && oldIds.has(suppliedId) ? suppliedId : `e${Date.now()}-${lineNumber}`;
+        let uniqueSuffix = 1;
+        while (!oldIds.has(id) && usedIds.has(id)) {
+          id = `e${Date.now()}-${lineNumber}-${uniqueSuffix}`;
+          uniqueSuffix += 1;
+        }
+        usedIds.add(id);
+        const liters = litersForDistance(importedVehicle, current - start);
         imported.push({
           id, vehicleId: vehicle.id, date, startOdometer: start, currentOdometer: current,
           liters, pricePerLiter: liters > 0 ? actualFuelValue / liters : 0, fuelActualValue: actualFuelValue,
-          driver: value('اسم السائق'), route: value('خط السير'), allowanceValue: calculateAllowanceValue(vehicle.id, liters),
+          driver: value('اسم السائق'), route: value('خط السير'), allowanceValue: allowanceCost(liters, fuelAllowanceRate(data)),
           expenses, note: value('التفصيل'),
         });
       });
 
-      if (errors.length) throw new Error(`راجع الصفوف التالية: ${errors.join('، ')}. تأكد من رقم اللوحة والعدادات والمصروف.`);
-      if (!imported.length) throw new Error('لم يتم العثور على حركات صالحة في القالب.');
+      if (errors.length) throw new Error(`تعذر الاستيراد بسبب أخطاء في البيانات:\n${errors.join('\n')}`);
+      if (!imported.length && !vehicleInfoRows) throw new Error(`لم يتم العثور على حركات مكتملة للاستيراد.${skippedRows ? ` تم تخطي ${skippedRows} صفوف غير مكتملة.` : ''}`);
       const updatedCount = imported.filter((entry) => oldIds.has(entry.id)).length;
       const addedCount = imported.length - updatedCount;
-      setData((current) => {
-        const importedById = new Map(imported.map((entry) => [entry.id, entry]));
-        const existingIds = new Set(current.entries.map((entry) => entry.id));
-        const entries = current.entries.map((entry) => importedById.get(entry.id) || entry);
-        imported.forEach((entry) => { if (!existingIds.has(entry.id)) entries.push(entry); });
-        return { ...current, entries };
-      });
-      setNotice(`تم استيراد سجل ${vehicle.plate}: تحديث ${updatedCount} وإضافة ${addedCount}`);
+      const importedById = new Map(imported.map((entry) => [entry.id, entry]));
+      const existingIds = new Set(data.entries.map((entry) => entry.id));
+      const entries = data.entries.map((entry) => importedById.get(entry.id) || entry);
+      imported.forEach((entry) => { if (!existingIds.has(entry.id)) entries.push(entry); });
+      const nextData: FleetData = {
+        ...data,
+        vehicles: data.vehicles.map((item) => item.id === vehicle.id ? importedVehicle : item),
+        entries,
+      };
+      const previousLocalData = localStorage.getItem(STORAGE_KEY);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextData));
+      try {
+        await saveCloudFleetDataStrict(nextData);
+      } catch (error) {
+        if (previousLocalData === null) localStorage.removeItem(STORAGE_KEY);
+        else localStorage.setItem(STORAGE_KEY, previousLocalData);
+        throw new Error(`فشل حفظ الاستيراد في السحابة ولم تُعتمد التغييرات: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+      }
+      setData(nextData);
+      const movementNotice = imported.length
+        ? `تحديث ${updatedCount} حركة وإضافة ${addedCount}`
+        : 'لا توجد حركات جديدة للاستيراد';
+      const skippedNotice = skippedRows ? ` تم تخطي ${skippedRows} صفوف غير مكتملة.` : '';
+      setNotice(`تم استيراد بيانات ${vehicle.plate}: ${movementNotice}.${skippedNotice} ظهرت البيانات المكتملة في الملخصات والتقارير وسجل السيارة.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'تعذر استيراد سجل السيارة.');
     } finally {
@@ -1029,6 +1239,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
 
   const saveEntry = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!entryForm.date) {
+      setNotice('اختر تاريخ الحركة من التقويم أو أدخله في حقل التاريخ');
+      return;
+    }
     if (fuelAmountDraft.trim() || (Object.values(expenseAmountDrafts) as string[]).some((amount) => amount.trim())) {
       setNotice('اضغط «إضافة» بجوار كل مبلغ لإدخاله في الإجمالي قبل الحفظ');
       return;
@@ -1073,8 +1287,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
         ? previous.entries.map((item) => item.id === editingEntryId ? entry : item)
         : [entry, ...previous.entries],
     }));
-    setEntryDialog(false);
-    setEditingEntryId(null);
+    closeEntryPage();
     setNotice(editingEntryId ? 'تم تحديث الحركة' : 'تم حفظ سجل التعبئة وتحديث الفجوة التموينية');
   };
 
@@ -1231,11 +1444,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
   const hasInvalidAmount = fuelActualValuePreview === null || Object.values(expenseAmountPreviews).some((amount) => amount === null);
   const hasUnaddedAmounts = Boolean(fuelAmountDraft.trim() || (Object.values(expenseAmountDrafts) as string[]).some((amount) => amount.trim()));
   const entryCostPreview = Math.round((fuelActualValuePreview ?? 0) + Object.values(expenseAmountPreviews).reduce<number>((sum, amount) => sum + (amount ?? 0), 0));
-  const navigationTiles = [
-    ...fleetSections,
-    ...(canManageUsers ? [fleetHomeActions[0]] : []),
-    ...(tab === 'home' ? [fleetHomeActions[1], fleetHomeActions[2]] : []),
-  ];
+  const navigationTiles = fleetSections;
   const openSection = fleetSections.find((section) => section.key === tab)
     || (tab === 'users' ? fleetHomeActions[0] : undefined);
 
@@ -1261,8 +1470,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
         <div className="fleet-header-actions">
           <span className="fleet-live"><i /> متابعة مباشرة</span>
           <button className="fleet-theme-button" type="button" onClick={() => setIsThemePickerOpen((open) => !open)}>ألوان التطبيق</button>
-          <button className="fleet-install" type="button" onClick={installApp}>تثبيت التطبيق</button>
-          {onLogout && <button className="fleet-logout" type="button" onClick={onLogout}>تسجيل الخروج</button>}
+          {canManageUsers && <button className="fleet-header-icon-button fleet-header-settings" type="button" title="إدارة المستخدمين والصلاحيات" aria-label="إدارة المستخدمين والصلاحيات" onClick={() => setTab('users')}><Settings aria-hidden="true" /><span>إدارة المستخدمين</span></button>}
+          <button className="fleet-header-icon-button fleet-header-update" type="button" title="تحديث النظام" aria-label="تحديث النظام" onClick={() => void updateSystem()}><RefreshCw aria-hidden="true" /><span>تحديث النظام</span></button>
+          <button className="fleet-header-icon-button fleet-header-install" type="button" title="تثبيت التطبيق" aria-label="تثبيت التطبيق" onClick={installApp}><Download aria-hidden="true" /><span>تثبيت التطبيق</span></button>
+          {onLogout && <button className="fleet-header-icon-button fleet-header-logout" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={onLogout}><LogOut aria-hidden="true" /><span>تسجيل الخروج</span></button>}
         </div>
       </header>
 
@@ -1275,10 +1486,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
 
       {tab === 'home' ? <nav className="fleet-tabs fleet-tabs-home" aria-label="أقسام متابعة السيارات">
         {navigationTiles.map(({ key, label, description, Icon }) => (
-          <button key={key} type="button" onClick={() => {
-            if (key === 'install') { void installApp(); return; }
-            if (key === 'update') { void updateSystem(); return; }
-            if (key === 'users') { setTab('users'); return; }
+          <button key={key} type="button" className={`fleet-home-section fleet-home-section-${key}`} onClick={() => {
             setTab(key);
             if (key !== 'vehicles') setSelectedVehicleId(null);
           }}>
@@ -1286,7 +1494,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
             <span className="fleet-tab-copy"><strong>{label}</strong></span>
           </button>
         ))}
-      </nav> : openSection ? <nav className="fleet-section-bar" aria-label="القسم المفتوح">
+      </nav> : openSection ? <nav className={`fleet-section-bar${tab === 'overview' || tab === 'vehicles' || tab === 'entries' ? ` fleet-section-bar-${tab}` : ''}`} aria-label="القسم المفتوح">
         <div className="fleet-section-bar-center" dir="rtl">
           <button type="button" className="fleet-section-title-button" aria-label={`العودة للرئيسية من ${openSection.label}`} onClick={() => { setTab('home'); setSelectedVehicleId(null); }}>{openSection.label}</button>
           <button type="button" className="fleet-section-back-button" aria-label="رجوع إلى الصفحة الرئيسية" onClick={() => { setTab('home'); setSelectedVehicleId(null); }}><ArrowRight aria-hidden="true" /></button>
@@ -1320,7 +1528,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
             <td>{user.employeeName || '—'}</td>
             <td><button type="button" className={`fleet-user-status${user.active ? ' is-active' : ''}`} disabled={user.id === currentUser.id} onClick={() => updateUser(user.id, { active: !user.active })}>{user.active ? 'نشط' : 'معطل'}</button></td>
             <td><button type="button" className="fleet-link-button" onClick={() => void sendUserPasswordReset(user)}>إرسال رابط التغيير</button></td>
-            <td className="fleet-user-actions"><button type="button" className="fleet-row-action fleet-row-action-permissions" onClick={() => setUserNotice(`صلاحيات ${user.username}: ${fleetRoleLabels[user.role]}`)}>الصلاحيات</button><button type="button" className="fleet-row-action fleet-row-action-lock" disabled={user.id === currentUser.id} onClick={() => updateUser(user.id, { active: !user.active })}>{user.active ? 'قفل' : 'فتح'}</button><button type="button" className="fleet-row-action fleet-row-action-edit" onClick={() => editUser(user)}>تعديل</button><button type="button" className="fleet-row-action fleet-row-action-delete" disabled={user.id === currentUser.id} onClick={() => deleteUser(user.id)}>حذف</button></td>
+            <td className="fleet-user-actions"><button type="button" className="fleet-row-action fleet-row-action-permissions" onClick={() => setUserNotice(`صلاحيات ${user.username}: ${fleetRoleLabels[user.role]}`)}>الصلاحيات</button><button type="button" className="fleet-row-action fleet-row-action-lock" disabled={user.id === currentUser.id} onClick={() => updateUser(user.id, { active: !user.active })}>{user.active ? 'قفل' : 'فتح'}</button><button type="button" className="fleet-row-action fleet-row-action-edit fleet-icon-action" aria-label={`تعديل المستخدم ${user.username}`} title="تعديل المستخدم" onClick={() => editUser(user)}><Pencil size={15} aria-hidden="true" /></button><button type="button" className="fleet-row-action fleet-row-action-delete fleet-icon-action" aria-label={`حذف المستخدم ${user.username}`} title="حذف المستخدم" disabled={user.id === currentUser.id} onClick={() => deleteUser(user.id)}><Trash2 size={15} aria-hidden="true" /></button></td>
           </tr>)}</tbody>
         </table></div>
         <p className="fleet-user-storage-note">تغيير كلمة المرور أعلاه يتم عبر Firebase Authentication للحساب المسجل حاليا.</p>
@@ -1425,6 +1633,73 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
           </div>
           <div className="ledger-note">الفجوة = القراءة الحالية − القراءة السابقة. انحراف التموين = مصروف الوقود الفعلي − قيمة التموين المعتمدة.</div>
         </section>
+
+        <section className="ledger-sheet monthly-summary-sheet" aria-label="الملخص الشهري لمصروفات السيارات">
+          <div className="ledger-titlebar monthly-summary-titlebar">
+            <div><span>تجميع مصروفات السيارات حسب الشهر</span><strong>ملخص شهري</strong></div>
+            <div className="monthly-summary-controls">
+              <span className="ledger-period">{numberFormat.format(monthlyVehicleSummaries.reduce((count, summary) => count + summary.entries.length, 0))} حركة</span>
+              <div className="ledger-month-picker">
+                <button
+                  type="button"
+                  className="ledger-month-select"
+                  aria-label="اختيار شهر الملخص"
+                  aria-haspopup="dialog"
+                  aria-expanded={isMonthlySummaryPickerOpen}
+                  onClick={() => {
+                    setMonthlySummaryPickerYear(Number(monthlySummaryMonth.slice(0, 4)));
+                    setIsMonthlySummaryPickerOpen((open) => !open);
+                  }}
+                >
+                  {new Intl.DateTimeFormat('ar-EG', { month: 'long', year: 'numeric' }).format(new Date(`${monthlySummaryMonth}-01T00:00:00`))}
+                </button>
+                {isMonthlySummaryPickerOpen && <div className="ledger-month-picker-panel" role="dialog" aria-label="اختيار شهر الملخص">
+                  <div className="ledger-month-picker-header">
+                    <button type="button" aria-label="السنة السابقة" onClick={() => setMonthlySummaryPickerYear((year) => year - 1)}>‹</button>
+                    <strong>{monthlySummaryPickerYear}</strong>
+                    <button type="button" aria-label="السنة التالية" onClick={() => setMonthlySummaryPickerYear((year) => year + 1)}>›</button>
+                  </div>
+                  <div className="ledger-month-picker-months">
+                    {monthNames.map((month, index) => (
+                      <button
+                        key={month}
+                        type="button"
+                        className={monthlySummaryMonth === `${monthlySummaryPickerYear}-${String(index + 1).padStart(2, '0')}` ? 'is-selected' : ''}
+                        onClick={() => {
+                          const selectedMonth = `${monthlySummaryPickerYear}-${String(index + 1).padStart(2, '0')}`;
+                          monthlySummaryMonthSelectedRef.current = true;
+                          setMonthlySummaryMonth(selectedMonth);
+                          setIsMonthlySummaryPickerOpen(false);
+                        }}
+                      >
+                        {month}
+                      </button>
+                    ))}
+                  </div>
+                </div>}
+              </div>
+            </div>
+          </div>
+          <div className="fleet-table-wrap monthly-summary-table-wrap">
+            <table className="fleet-table ledger-table monthly-summary-table">
+              <thead><tr><th>م</th><th>رقم السيارة</th><th>اسم السيارة</th><th>تموين السيارة</th>{expenseFields.map((field) => <th key={field.key}>{field.label}</th>)}<th>إجمالي مصاريف السيارة</th><th>إجمالي الكيلومتر</th><th>عدد اللترات</th></tr></thead>
+              <tbody>{monthlyVehicleSummaries.map((summary, index) => (
+                <tr key={summary.vehicle.id} className="fleet-vehicle-tone" style={vehicleToneStyle(summary.vehicle.id, data.vehicles)}>
+                  <td className="ledger-index">{numberFormat.format(index + 1)}</td>
+                  <td className="ledger-plate"><button type="button" className="ledger-vehicle-link" onClick={() => { setSelectedVehicleId(summary.vehicle.id); setTab('vehicles'); }}>{summary.vehicle.plate}</button></td>
+                  <td>{summary.vehicle.name}</td>
+                  <td>{currencyFormat.format(summary.fuel)}</td>
+                  {expenseFields.map((field) => <td key={field.key}>{numberFormat.format(summary.expenses[field.key])}</td>)}
+                  <td className="monthly-summary-total">{currencyFormat.format(summary.fuel + sumExpenses(summary.expenses))}</td>
+                  <td>{numberFormat.format(summary.distance)} كم</td>
+                  <td>{numberFormat.format(summary.liters)} لتر</td>
+                </tr>
+              ))}</tbody>
+              <tfoot><tr><th colSpan={3}>إجمالي الشهر</th><th>{currencyFormat.format(monthlySummaryTotals.fuel)}</th>{expenseFields.map((field) => <th key={field.key}>{numberFormat.format(monthlySummaryTotals.categories[field.key])}</th>)}<th>{currencyFormat.format(monthlySummaryTotals.fuel + monthlySummaryTotals.expenses)}</th><th>{numberFormat.format(monthlySummaryTotals.distance)} كم</th><th>{numberFormat.format(monthlySummaryTotals.liters)} لتر</th></tr></tfoot>
+            </table>
+          </div>
+          {monthlyVehicleSummaries.every((summary) => summary.entries.length === 0) && <p className="fleet-empty-state">لا توجد مصروفات مسجلة في هذا الشهر.</p>}
+        </section>
       </>}
 
       {tab === 'vehicles' && <section className={`fleet-section${selectedSummary ? ' fleet-detail-page' : ''}`}>
@@ -1436,10 +1711,16 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
           <div className="fleet-section-heading fleet-detail-heading">
             <div><button type="button" className="fleet-link-button" onClick={() => setSelectedVehicleId(null)}>← العودة إلى السيارات</button><h2>{selectedSummary.vehicle.name}</h2><span className="fleet-overline">{selectedSummary.vehicle.plate} · {selectedSummary.vehicle.driver || 'السائق غير محدد'}</span></div>
             <div className="fleet-detail-actions">
-              <button className="fleet-button fleet-button-light" type="button" onClick={() => openVehicleEditor(selectedSummary.vehicle)}>تعديل السيارة</button>
+              <button className="fleet-button fleet-button-light" type="button" onClick={() => void downloadSelectedVehicleTemplate().catch((error: unknown) => setNotice(error instanceof Error ? `تعذر إنشاء قالب السيارة: ${error.message}` : 'تعذر إنشاء قالب السيارة.'))}><Download size={14} aria-hidden="true" /> تنزيل قالب السيارة</button>
+              {canEditFleet && <>
+                <button className="fleet-button fleet-button-light" type="button" disabled={isImportingVehicleHistory} onClick={() => vehicleHistoryImportRef.current?.click()}><Upload size={14} aria-hidden="true" /> {isImportingVehicleHistory ? 'جاري الاستيراد...' : 'استيراد بيانات السيارة'}</button>
+                <input ref={vehicleHistoryImportRef} className="fleet-file-input" type="file" accept=".xlsx,.csv" aria-label="اختر قالب السيارة للاستيراد" onChange={importSelectedVehicleTemplate} />
+              </>}
+              <button className="fleet-button fleet-button-light fleet-icon-action" type="button" aria-label={`تعديل السيارة ${selectedSummary.vehicle.name}`} title="تعديل السيارة" onClick={() => openVehicleEditor(selectedSummary.vehicle)}><Pencil size={16} aria-hidden="true" /></button>
               <button className="fleet-button fleet-button-primary" type="button" onClick={() => startEntry(selectedSummary.vehicle.id)}>+ تسجيل تعبئة</button>
             </div>
           </div>
+          <p className="fleet-template-note">القالب خاص بالسيارة المحددة: عدّل بياناتها وحركاتها ثم استورده لتحديث الملخصات والتقارير وسجل السيارة.</p>
           <div className="fleet-detail-stats">
             <div><span>بداية العداد</span><strong>{numberFormat.format(selectedSummary.vehicle.openingOdometer)} كم</strong></div>
             <div><span>القراءة الحالية</span><strong>{numberFormat.format(selectedSummary.lastOdometer)} كم</strong></div>
@@ -1448,6 +1729,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
             <div><span>عدد اللترات المصروفة</span><strong>{numberFormat.format(selectedSummary.liters)} لتر</strong></div>
             <div><span>معدل اللترات</span><strong>{numberFormat.format(vehicleFuelRate(selectedSummary.vehicle))} لتر / {numberFormat.format(vehicleDistanceBase(selectedSummary.vehicle))} كم</strong></div>
             <div><span>إجمالي مصاريف السيارة</span><strong>{currencyFormat.format(selectedSummary.cost)}</strong></div>
+            <div className="fleet-extra-expense-stat"><span>إجمالي المصاريف الإضافية</span><strong>{currencyFormat.format(selectedAdditionalExpenses)}</strong></div>
             <div><span>سعر التموين الموحد</span><strong>{rateFormat.format(fuelAllowanceRate(data))} جنيه / لتر</strong></div>
           </div>
           <div className="fleet-table-wrap fleet-detail-table-wrap">
@@ -1455,9 +1737,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
               <thead><tr><th>التاريخ</th><th>اسم السائق</th><th>خط السير</th><th>القراءة السابقة</th><th>القراءة الحالية</th><th>الفجوة (كم)</th><th>عدد اللترات</th><th>قيمة التموين المقررة</th><th>قيمة التموين الفعلية</th><th>الانحراف</th><th>التراكم</th>{expenseFields.map((field) => <th key={field.key}>{field.label}</th>)}<th>إجمالي مصاريف السيارة</th><th>إجراء</th></tr></thead>
               <tbody>{selectedEntryDetails.map(({ entry, distance, actualFuelValue, deviation, accumulated, totalCost }) => {
                 const liters = litersForEntry(entry, selectedSummary.vehicle);
-                return <tr key={entry.id} className="fleet-vehicle-tone" style={vehicleToneStyle(entry.vehicleId, data.vehicles)}><td>{formatDateArabic(entry.date)}</td><td>{entry.driver || selectedSummary.vehicle.driver || '—'}</td><td>{entry.route || '—'}</td><td>{numberFormat.format(entry.startOdometer)}</td><td>{numberFormat.format(entry.currentOdometer)}</td><td>{numberFormat.format(distance)} كم</td><td>{numberFormat.format(liters)} لتر</td><td>{currencyFormat.format(allowanceCost(liters, fuelAllowanceRate(data)))}</td><td>{currencyFormat.format(actualFuelValue)}</td><td className={Math.abs(deviation) > 200 ? 'ledger-warning' : 'ledger-ok'}>{currencyFormat.format(deviation)}</td><td className={accumulated > 200 ? 'ledger-warning' : 'ledger-ok'}>{currencyFormat.format(accumulated)}</td>{expenseFields.map((field) => <td key={field.key}>{currencyFormat.format(entry.expenses?.[field.key] || 0)}</td>)}<td>{currencyFormat.format(totalCost)}{entry.note ? <small className="ledger-row-note">{entry.note}</small> : null}</td><td className="ledger-actions"><button type="button" className="entry-edit-button" onClick={() => editEntry(entry)}>تعديل</button><button type="button" className="entry-delete-button" onClick={() => openDeleteConfirmation(entry)}>حذف</button></td></tr>;
+                return <tr key={entry.id} className="fleet-vehicle-tone" style={vehicleToneStyle(entry.vehicleId, data.vehicles)}><td>{formatDateArabic(entry.date)}</td><td>{entry.driver || selectedSummary.vehicle.driver || '—'}</td><td>{entry.route || '—'}</td><td>{numberFormat.format(entry.startOdometer)}</td><td>{numberFormat.format(entry.currentOdometer)}</td><td>{numberFormat.format(distance)} كم</td><td>{numberFormat.format(liters)} لتر</td><td>{currencyFormat.format(allowanceCost(liters, fuelAllowanceRate(data)))}</td><td>{currencyFormat.format(actualFuelValue)}</td><td className={Math.abs(deviation) > 200 ? 'ledger-warning' : 'ledger-ok'}>{currencyFormat.format(deviation)}</td><td className={accumulated > 200 ? 'ledger-warning' : 'ledger-ok'}>{currencyFormat.format(accumulated)}</td>{expenseFields.map((field) => <td key={field.key}>{numberFormat.format(entry.expenses?.[field.key] || 0)}</td>)}<td>{currencyFormat.format(totalCost)}{entry.note ? <small className="ledger-row-note">{entry.note}</small> : null}</td><td className="ledger-actions"><button type="button" className="entry-edit-button fleet-icon-action" aria-label="تعديل حركة الوقود" title="تعديل" onClick={() => editEntry(entry)}><Pencil size={15} aria-hidden="true" /></button><button type="button" className="entry-delete-button fleet-icon-action" aria-label="حذف حركة الوقود" title="حذف" onClick={() => openDeleteConfirmation(entry)}><Trash2 size={15} aria-hidden="true" /></button></td></tr>;
               })}</tbody>
-              {selectedEntries.length > 0 && <tfoot><tr><th colSpan={5}>إجمالي السيارة</th><th>{numberFormat.format(selectedSummary.distance)} كم</th><th>{numberFormat.format(selectedSummary.liters)} لتر</th><th colSpan={3}>{currencyFormat.format(selectedEntryDetails.reduce((sum, row) => sum + row.deviation, 0))}</th><th>—</th>{expenseFields.map((field) => <th key={field.key}>{currencyFormat.format(selectedEntries.reduce((sum, entry) => sum + (entry.expenses?.[field.key] || 0), 0))}</th>)}<th>{currencyFormat.format(selectedSummary.cost)}</th><th /></tr></tfoot>}
+              {selectedEntries.length > 0 && <tfoot><tr><th colSpan={5}>إجمالي السيارة</th><th>{numberFormat.format(selectedSummary.distance)} كم</th><th>{numberFormat.format(selectedSummary.liters)} لتر</th><th colSpan={3}>{currencyFormat.format(selectedEntryDetails.reduce((sum, row) => sum + row.deviation, 0))}</th><th>—</th>{expenseFields.map((field) => <th key={field.key}>{numberFormat.format(selectedEntries.reduce((sum, entry) => sum + (entry.expenses?.[field.key] || 0), 0))}</th>)}<th>{currencyFormat.format(selectedSummary.cost)}</th><th /></tr></tfoot>}
             </table>
             {selectedEntries.length === 0 && <p className="fleet-empty-state">لا توجد مصروفات مسجلة لهذه السيارة بعد.</p>}
           </div>
@@ -1470,11 +1752,22 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
           </div>
           <div className="fleet-vehicle-grid">{summaries.map((summary) => {
             const { vehicle, lastOdometer, entries, distance, liters, expected, deviation, cost } = summary;
-            return <article className="fleet-vehicle fleet-vehicle-card fleet-vehicle-tone" style={vehicleToneStyle(vehicle.id, data.vehicles)} key={vehicle.id} onClick={() => setSelectedVehicleId(vehicle.id)}>
-              <div className="fleet-vehicle-top"><span className="fleet-car-icon"><img src="/car-mark.svg" alt="" /></span>{Math.abs(deviation) >= 0.5 && <span className={`fleet-gap ${Math.abs(deviation) > 200 ? 'gap-high' : 'gap-low'}`} aria-label={`انحراف ${currencyFormat.format(deviation)}`}>انحراف: {currencyFormat.format(deviation)}</span>}</div>
-              <h3>{vehicle.name}</h3><p className="fleet-plate">{vehicle.plate}</p>
-              <div className="fleet-vehicle-data"><span>السائق<strong>{vehicle.driver || 'غير محدد'}</strong></span><span>معدل اللترات<strong>{numberFormat.format(vehicleFuelRate(vehicle))} لتر / {numberFormat.format(vehicleDistanceBase(vehicle))} كم</strong></span><span>العداد الحالي<strong>{numberFormat.format(lastOdometer)} كم</strong></span><span className="fleet-fixed-reading" onClick={(event) => event.stopPropagation()}><label>القراءة السابقة<input type="number" min="0" value={openingOdometerDrafts[vehicle.id] ?? String(vehicle.openingOdometer)} aria-label={`القراءة السابقة لـ ${vehicle.name}`} onChange={(event) => setOpeningOdometerDrafts((current) => ({ ...current, [vehicle.id]: event.target.value }))} /><button type="button" onClick={() => saveOpeningOdometer(vehicle, entries.length)}>حفظ القراءة</button></label></span><span>المسافة المسجلة<strong>{numberFormat.format(distance)} كم</strong></span><span>الوقود المتوقع / المصروف<strong>{numberFormat.format(expected)} / {numberFormat.format(liters)} لتر</strong></span><span>عدد التعبئات<strong>{entries.length}</strong></span><span>إجمالي التكلفة<strong>{currencyFormat.format(cost)}</strong></span></div>
-              <div className="fleet-card-actions"><button type="button" className="fleet-open-details" onClick={() => setSelectedVehicleId(vehicle.id)}>عرض تفاصيل السيارة <span aria-hidden="true">←</span></button><button type="button" className="fleet-vehicle-edit" onClick={() => openVehicleEditor(vehicle)}>تعديل السيارة</button></div>
+            const isExpanded = expandedVehicleCardId === vehicle.id;
+            return <article className={`fleet-vehicle fleet-vehicle-card fleet-vehicle-tone${isExpanded ? ' is-expanded' : ''}`} style={vehicleToneStyle(vehicle.id, data.vehicles)} key={vehicle.id}>
+              <div className="fleet-vehicle-summary-row">
+                <button type="button" className="fleet-vehicle-summary-toggle" aria-expanded={isExpanded} aria-controls={`vehicle-card-details-${vehicle.id}`} onClick={() => setExpandedVehicleCardId((current) => current === vehicle.id ? null : vehicle.id)}>
+                  <span className="fleet-car-icon"><img src="/car-mark.svg" alt="" /></span>
+                  <span className="fleet-vehicle-summary-copy"><strong>{vehicle.plate}</strong><small>{vehicle.name}</small></span>
+                </button>
+                <button type="button" className="fleet-vehicle-edit-icon" aria-label={`تعديل السيارة ${vehicle.name}`} title="تعديل السيارة" onClick={() => openVehicleEditor(vehicle)}><Settings size={14} strokeWidth={2.2} aria-hidden="true" /></button>
+                <span className="fleet-vehicle-summary-spacer" />
+                {Math.abs(deviation) >= 0.5 && <span className={`fleet-gap ${Math.abs(deviation) > 200 ? 'gap-high' : 'gap-low'}`}>الانحراف: {currencyFormat.format(deviation)}</span>}
+                <span className="fleet-vehicle-expand-icon" aria-hidden="true">{isExpanded ? '−' : '+'}</span>
+              </div>
+              {isExpanded && <div className="fleet-vehicle-expanded" id={`vehicle-card-details-${vehicle.id}`}>
+                <div className="fleet-vehicle-data"><span>السائق<strong>{vehicle.driver || 'غير محدد'}</strong></span><span>معدل اللترات<strong>{numberFormat.format(vehicleFuelRate(vehicle))} لتر / {numberFormat.format(vehicleDistanceBase(vehicle))} كم</strong></span><span>العداد الحالي<strong>{numberFormat.format(lastOdometer)} كم</strong></span><span className="fleet-fixed-reading"><label>القراءة السابقة<input type="number" min="0" value={openingOdometerDrafts[vehicle.id] ?? String(vehicle.openingOdometer)} aria-label={`القراءة السابقة لـ ${vehicle.name}`} onChange={(event) => setOpeningOdometerDrafts((current) => ({ ...current, [vehicle.id]: event.target.value }))} /><button type="button" onClick={() => saveOpeningOdometer(vehicle, entries.length)}>حفظ القراءة</button></label></span><span>المسافة المسجلة<strong>{numberFormat.format(distance)} كم</strong></span><span>الوقود المتوقع / المصروف<strong>{numberFormat.format(expected)} / {numberFormat.format(liters)} لتر</strong></span><span>عدد التعبئات<strong>{entries.length}</strong></span><span>إجمالي التكلفة<strong>{currencyFormat.format(cost)}</strong></span></div>
+                <div className="fleet-card-actions"><button type="button" className="fleet-open-details" onClick={() => setSelectedVehicleId(vehicle.id)}>عرض تفاصيل السيارة <span aria-hidden="true">←</span></button></div>
+              </div>}
             </article>;
           })}</div>
         </>}
@@ -1494,7 +1787,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
           <button className="fleet-button fleet-button-light" type="button" onClick={() => { setSearch(''); setLedgerFilters({ vehicleId: 'all', from: '', to: '', search: '' }); }}>إعادة ضبط</button>
         </div>
         <div className="fleet-table-wrap"><table className="fleet-table fleet-entry-table"><thead><tr><th>التاريخ</th><th>السيارة</th><th>بداية العداد</th><th>العداد الحالي</th><th>الفجوة (كم)</th><th>الوقود المتوقع</th><th>المصروف</th><th>انحراف التموين (جنيه)</th><th>إجمالي المصروف</th><th>إجراء</th></tr></thead><tbody>
-          {filteredEntries.map((entry) => { const vehicle = data.vehicles.find((item) => item.id === entry.vehicleId); const distance = Math.max(0, entry.currentOdometer - entry.startOdometer); const expected = vehicle ? litersForDistance(vehicle, distance) : 0; const liters = litersForEntry(entry, vehicle); const deviation = entryDeviation(entry, fuelAllowanceRate(data), liters); return <tr key={entry.id} className="fleet-vehicle-tone" style={vehicleToneStyle(entry.vehicleId, data.vehicles)}><td>{formatDateArabic(entry.date)}</td><td><strong>{vehicle?.name || 'سيارة محذوفة'}</strong><small>{vehicle?.plate}</small></td><td>{numberFormat.format(entry.startOdometer)}</td><td>{numberFormat.format(entry.currentOdometer)}</td><td>{numberFormat.format(distance)} كم</td><td>{numberFormat.format(expected)} لتر</td><td>{numberFormat.format(liters)} لتر</td><td className={Math.abs(deviation) > 200 ? 'ledger-warning' : 'ledger-ok'}>{currencyFormat.format(deviation)}</td><td>{currencyFormat.format(entryTotalCost(entry))}</td><td className="ledger-actions"><button type="button" className="entry-edit-button" onClick={() => editEntry(entry)}>تعديل</button><button type="button" className="entry-delete-button" onClick={() => openDeleteConfirmation(entry)}>حذف</button></td></tr>; })}
+          {filteredEntries.map((entry) => { const vehicle = data.vehicles.find((item) => item.id === entry.vehicleId); const distance = Math.max(0, entry.currentOdometer - entry.startOdometer); const expected = vehicle ? litersForDistance(vehicle, distance) : 0; const liters = litersForEntry(entry, vehicle); const deviation = entryDeviation(entry, fuelAllowanceRate(data), liters); return <tr key={entry.id} className="fleet-vehicle-tone" style={vehicleToneStyle(entry.vehicleId, data.vehicles)}><td>{formatDateArabic(entry.date)}</td><td><strong>{vehicle?.name || 'سيارة محذوفة'}</strong><small>{vehicle?.plate}</small></td><td>{numberFormat.format(entry.startOdometer)}</td><td>{numberFormat.format(entry.currentOdometer)}</td><td>{numberFormat.format(distance)} كم</td><td>{numberFormat.format(expected)} لتر</td><td>{numberFormat.format(liters)} لتر</td><td className={Math.abs(deviation) > 200 ? 'ledger-warning' : 'ledger-ok'}>{currencyFormat.format(deviation)}</td><td>{currencyFormat.format(entryTotalCost(entry))}</td><td className="ledger-actions"><button type="button" className="entry-edit-button fleet-icon-action" aria-label="تعديل حركة الوقود" title="تعديل" onClick={() => editEntry(entry)}><Pencil size={15} aria-hidden="true" /></button><button type="button" className="entry-delete-button fleet-icon-action" aria-label="حذف حركة الوقود" title="حذف" onClick={() => openDeleteConfirmation(entry)}><Trash2 size={15} aria-hidden="true" /></button></td></tr>; })}
         </tbody></table></div>
       </section>}
 
@@ -1502,18 +1795,22 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
 
       {vehicleDialog && <div className="fleet-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setVehicleDialog(false)}><form className="fleet-modal" onSubmit={saveVehicle}><div className="fleet-modal-title"><div><span className="fleet-overline">بيانات المركبة</span><h2>{editingVehicleId ? 'تعديل بيانات السيارة' : 'إضافة سيارة'}</h2></div><button type="button" aria-label="إغلاق" onClick={() => { setVehicleDialog(false); setEditingVehicleId(null); }}>×</button></div><label>اسم السيارة<input required value={vehicleForm.name} onChange={(event) => setVehicleForm({ ...vehicleForm, name: event.target.value })} placeholder="مثال: تويوتا هايلوكس" /></label><label>رقم اللوحة<input required value={vehicleForm.plate} onChange={(event) => setVehicleForm({ ...vehicleForm, plate: event.target.value })} /></label><label>اسم السائق<input value={vehicleForm.driver} onChange={(event) => setVehicleForm({ ...vehicleForm, driver: event.target.value })} /></label><div className="fleet-form-row"><label>بداية العداد<input required type="number" min="0" value={vehicleForm.openingOdometer} onChange={(event) => setVehicleForm({ ...vehicleForm, openingOdometer: event.target.value })} /></label><label>اللترات المحددة<input required type="number" min="0.1" step="0.1" value={vehicleForm.kmPerLiter} onChange={(event) => setVehicleForm({ ...vehicleForm, kmPerLiter: event.target.value })} /></label></div><div className="fleet-form-row"><label>مسافة الأساس بالكيلومتر<input required type="number" min="1" step="1" value={vehicleForm.distanceBaseKm} onChange={(event) => setVehicleForm({ ...vehicleForm, distanceBaseKm: event.target.value })} /></label><span className="fleet-rate-help">المعادلة: الفجوة ÷ مسافة الأساس × اللترات</span></div><button className="fleet-button fleet-button-primary fleet-submit" type="submit">{editingVehicleId ? 'حفظ التعديل' : 'حفظ السيارة'}</button></form></div>}
 
-      {entryDialog && <div className="fleet-modal-backdrop fleet-entry-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setEntryDialog(false)}>
+      {entryDialog && <section className="fleet-entry-page" aria-label="صفحة تسجيل حركة المصروفات">
         <form className="fleet-modal fleet-entry-modal" onSubmit={saveEntry}>
           <header className="entry-form-header">
-            <div><span>إدارة الأسطول / سجل المصاريف</span><h2>{editingEntryId ? 'تعديل حركة مسجلة' : 'إدخال حركة جديدة'}</h2></div>
-            <button type="button" aria-label="إغلاق" onClick={() => setEntryDialog(false)}>×</button>
+            <div><span>{entryVehicle ? `${entryVehicle.plate} / سجل المصاريف` : 'إدارة الأسطول / سجل المصاريف'}</span><h2>{editingEntryId ? 'تعديل حركة مسجلة' : 'إدخال حركة جديدة'}</h2></div>
+            <button type="button" className="entry-page-back" onClick={closeEntryPage}>العودة</button>
           </header>
           <div className="entry-form-body">
             <section className="entry-form-section">
               <div className="entry-section-title"><span>01</span><div><h3>بيانات الرحلة</h3><p>السيارة والتاريخ والسائق والمسار</p></div></div>
               <div className="entry-form-grid entry-trip-grid">
                 <label className="entry-field"><span>اختيار السيارة برقم اللوحة</span><input type="search" inputMode="numeric" value={entryPlateSearch} onChange={(event) => setEntryPlateSearch(event.target.value)} placeholder="اكتب رقم اللوحة هنا" /><select required value={entryForm.vehicleId} onChange={(event) => { const next = event.target.value; const vehicleSummary = summaries.find((item) => item.vehicle.id === next); const latest = vehicleSummary?.lastOdometer ?? 0; setEntryPlateSearch(vehicleSummary?.vehicle.plate || ''); setEntryForm({ ...entryForm, vehicleId: next, driver: vehicleSummary?.vehicle.driver || '', startOdometer: String(latest), currentOdometer: '', liters: '0.0' }); }}>{data.vehicles.filter((vehicle) => !entryPlateSearch.trim() || vehicle.plate.includes(entryPlateSearch.trim())).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} · {vehicle.name}</option>)}</select><small className="entry-field-help">اكتب رقم اللوحة للبحث ثم اختر النتيجة باسم السيارة الكامل</small></label>
-                <label className="entry-field"><span>التاريخ</span><input required type="date" value={entryForm.date} onChange={(event) => setEntryForm({ ...entryForm, date: event.target.value })} /></label>
+                <label className="entry-field entry-date-field">
+                  <span>التاريخ</span>
+                  <input required type="date" lang="ar" dir="rtl" value={entryForm.date} onChange={(event) => setEntryForm((current) => ({ ...current, date: event.target.value }))} />
+                  <small className="entry-field-help">اكتب التاريخ أو اختره من التقويم</small>
+                </label>
                 <label className="entry-field"><span>اسم السائق</span><input value={entryForm.driver} onChange={(event) => setEntryForm({ ...entryForm, driver: event.target.value })} /></label>
                 <label className="entry-field"><span>خط السير</span><input value={entryForm.route} onChange={(event) => setEntryForm({ ...entryForm, route: event.target.value })} placeholder="نقطة الانطلاق والوجهة" /></label>
               </div>
@@ -1538,22 +1835,34 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser = readF
             </section>
 
             <section className="entry-form-section">
-              <div className="entry-section-title"><span>03</span><div><h3>المصاريف الإضافية</h3><p>أدخل كل مبلغ واضغط إضافة ليُحسب في الإجمالي</p></div></div>
+              <div className="entry-section-title"><span>03</span><div><h3>المصاريف الإضافية</h3><p>كل المبالغ بالجنيه · أدخل المبلغ واضغط إضافة ليُحسب في الإجمالي</p></div></div>
               <div className="entry-expense-grid">{expenseFields.map((field) => {
                 const amount = expenseAmountPreviews[field.key];
-                return <div className="entry-field" key={field.key}>
-                  <label className="entry-field-label" htmlFor={`expense-amount-${field.key}`}>{field.label}</label>
-                  <div className="entry-amount-total"><span>الإجمالي</span><output aria-live="polite">{amount === null ? '—' : currencyFormat.format(amount)}</output></div>
-                  <div className="entry-amount-entry"><input id={`expense-amount-${field.key}`} dir="ltr" type="text" inputMode="decimal" aria-label={`${field.label} بالجنيه`} value={expenseAmountDrafts[field.key]} onChange={(event) => setExpenseAmountDrafts((current) => ({ ...current, [field.key]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addExpenseAmount(field.key); } }} /><button type="button" className="entry-amount-add" onClick={() => addExpenseAmount(field.key)}>إضافة</button></div>
-                  <div className="entry-amount-list" aria-label={`المبالغ المضافة: ${field.label}`}>{splitAmountExpression(entryForm.expenses[field.key]).map((part, index) => <span className="entry-amount-chip" key={`${part}-${index}`}><span dir="ltr">{part}</span><button type="button" aria-label={`حذف ${part} من ${field.label}`} onClick={() => removeExpenseAmount(field.key, index)}>×</button></span>)}</div>
-                  {amount === null && <small className="entry-field-help" role="alert">راجع المبالغ المضافة</small>}
+                const isExpanded = expandedExpenseKey === field.key;
+                return <div className={`entry-field entry-expense-item${isExpanded ? ' is-expanded' : ''}`} key={field.key}>
+                  <button
+                    type="button"
+                    className="entry-expense-toggle"
+                    aria-expanded={isExpanded}
+                    aria-controls={`expense-panel-${field.key}`}
+                    onClick={() => setExpandedExpenseKey((current) => current === field.key ? null : field.key)}
+                  >
+                    <span className="entry-expense-name">{field.label}</span>
+                    <span className="entry-expense-total">{amount === null ? 'مبلغ غير صالح' : numberFormat.format(amount)}</span>
+                    <span className="entry-expense-chevron" aria-hidden="true">{isExpanded ? '−' : '+'}</span>
+                  </button>
+                  {isExpanded && <div className="entry-expense-panel" id={`expense-panel-${field.key}`}>
+                    <div className="entry-amount-entry"><input id={`expense-amount-${field.key}`} dir="ltr" type="text" inputMode="decimal" aria-label={`${field.label} بالجنيه`} value={expenseAmountDrafts[field.key]} onChange={(event) => setExpenseAmountDrafts((current) => ({ ...current, [field.key]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addExpenseAmount(field.key); } }} /><button type="button" className="entry-amount-add" onClick={() => addExpenseAmount(field.key)}>إضافة</button></div>
+                    <div className="entry-amount-list" aria-label={`المبالغ المضافة: ${field.label}`}>{splitAmountExpression(entryForm.expenses[field.key]).map((part, index) => <span className="entry-amount-chip" key={`${part}-${index}`}><span dir="ltr">{part}</span><button type="button" aria-label={`حذف ${part} من ${field.label}`} onClick={() => removeExpenseAmount(field.key, index)}>×</button></span>)}</div>
+                    {amount === null && <small className="entry-field-help" role="alert">راجع المبالغ المضافة</small>}
+                  </div>}
                 </div>;
               })}</div>
             </section>
           </div>
-          <footer className="entry-form-actions"><div><span>إجمالي الحركة</span><strong>{hasInvalidAmount ? 'راجع المبالغ' : hasUnaddedAmounts ? 'اضغط إضافة أولًا' : currencyFormat.format(entryCostPreview)}</strong></div><button type="button" className="entry-cancel-button" onClick={() => { setEntryDialog(false); setEditingEntryId(null); }}>إلغاء</button><button className="fleet-button fleet-button-primary entry-save-button" type="submit">{editingEntryId ? 'حفظ التعديل' : 'حفظ الحركة'}</button></footer>
+          <footer className="entry-form-actions"><div><span>إجمالي الحركة</span><strong>{hasInvalidAmount ? 'راجع المبالغ' : hasUnaddedAmounts ? 'اضغط إضافة أولًا' : currencyFormat.format(entryCostPreview)}</strong></div><button type="button" className="entry-cancel-button" onClick={closeEntryPage}>العودة</button><button className="fleet-button fleet-button-primary entry-save-button" type="submit">{editingEntryId ? 'حفظ التعديل' : 'حفظ الحركة'}</button></footer>
         </form>
-      </div>}
+      </section>}
       {pendingDeleteEntry && <div className="fleet-confirm-backdrop" role="presentation"><div className="fleet-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-entry-title"><span className="fleet-confirm-icon">!</span><h2 id="delete-entry-title">تأكيد حذف السجل</h2><p>لحذف حركة التعبئة بتاريخ <strong>{formatDateArabic(pendingDeleteEntry.date)}</strong> اكتب كلمة <strong>موافق</strong> ثم اضغط تأكيد.</p><input className="fleet-confirm-input" aria-label="اكتب موافق للتأكيد" value={deleteConfirmationText} onChange={(event) => setDeleteConfirmationText(event.target.value)} autoFocus placeholder="اكتب: موافق" /><div><button type="button" className="fleet-confirm-cancel" onClick={cancelDeleteConfirmation}>إلغاء</button><button type="button" className="fleet-confirm-ok" disabled={deleteConfirmationText.trim() !== 'موافق'} onClick={confirmDeleteEntry}>تأكيد الحذف</button></div></div></div>}
     </main>
   );
