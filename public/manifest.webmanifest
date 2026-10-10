@@ -1,0 +1,23 @@
+{
+  "name": "مراقبة سيارات شركة أبو غالي",
+  "short_name": "Marsad Fleet",
+  "description": "تطبيق متابعة أسطول سيارات شركة أبو غالي والوقود والمصروفات.",
+  "lang": "ar",
+  "dir": "rtl",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#f4f6f3",
+  "theme_color": "#7e2033",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/car-mark.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

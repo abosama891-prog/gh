@@ -1,0 +1,117 @@
+:root {
+    --primary-color: #176b64;
+    --secondary-color: #397b70;
+    --accent-color: #a65d47;
+    --background-color: #f5f7f5;
+    --text-color: #293b37;
+    --font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: var(--font-family);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.6;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 0;
+    padding: 0;
+    line-height: 1.35;
+    text-wrap: balance;
+}
+
+button, input, select, textarea {
+    font-family: inherit;
+}
+
+a {
+    text-decoration: none;
+    color: var(--primary-color);
+}
+
+a:hover {
+    color: var(--accent-color);
+}
+
+.cars-login {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: #f2f6f3;
+    color: #263b36;
+    font-family: var(--font-family);
+}
+
+.cars-login-form {
+    width: min(100%, 430px);
+    padding: 28px;
+    border: 1px solid #dce5df;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 12px 32px #203c3010;
+}
+
+.cars-login-brand { display: flex; align-items: center; gap: 12px; }
+.cars-login-brand img { width: 44px; height: 44px; border-radius: 8px; }
+.cars-login-brand p { margin: 0 0 4px; color: #176b64; font-size: 12px; font-weight: 700; }
+.cars-login-brand h1 { margin: 0; color: #263b36; font-size: 24px; font-weight: 750; }
+.cars-login-description { margin: 18px 0 22px; color: #66766e; font-size: 13px; }
+.cars-login-form label { display: grid; gap: 7px; margin-top: 14px; color: #40554b; font-size: 12px; font-weight: 650; }
+.cars-login-form input { width: 100%; min-height: 43px; padding: 0 11px; border: 1px solid #d6e0d9; border-radius: 5px; color: #263b36; background: #fcfdfc; font: inherit; }
+.cars-login-form input:focus { border-color: #5c9a82; outline: 2px solid #5c9a8228; }
+.cars-login-error { margin: 14px 0 0; color: #a6443c; font-size: 12px; font-weight: 650; }
+.cars-login-submit { width: 100%; min-height: 44px; margin-top: 20px; border: 1px solid #176b64; border-radius: 5px; color: #fff; background: #176b64; font: inherit; font-weight: 700; cursor: pointer; }
+.cars-login-submit:hover { background: #12594f; }
+.cars-login-hint { display: block; margin-top: 13px; color: #748279; font-size: 10px; }
+
+.fleet-app .fleet-button, .fleet-app .fleet-install, .fleet-app .fleet-logout { box-shadow: none; }
+.fleet-app .fleet-button-primary { background: #176b64; }
+.fleet-app .fleet-button-primary:hover { background: #12594f; }
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+.button:hover {
+    background-color: var(--secondary-color);
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th, .table td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+.table th {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.table tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+.table tr:hover {
+    background-color: #ddd;
+}
