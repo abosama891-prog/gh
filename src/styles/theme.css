@@ -1,28 +1,16 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap');
-
-:root {
-    --primary-color: #176b64;
-    --secondary-color: #426f91;
-    --accent-color: #a66e2d;
-    --background-color: #f4f7f5;
-    --text-color: #263b36;
-    --border-color: #dfe6e1;
-    --font-family: 'Cairo', Tahoma, sans-serif;
-}
-
 body {
     margin: 0;
-    font-family: var(--font-family);
-    background-color: var(--background-color);
-    color: var(--text-color);
+    font-family: var(--font-body, 'Cairo', sans-serif);
+    background-color: var(--bg, #f8fafc);
+    color: var(--ink, #0f172a);
 }
 
 h1, h2, h3, h4, h5, h6 {
-    color: var(--text-color);
+    color: var(--heading, var(--ink, #0f172a));
 }
 
 a {
-    color: var(--primary-color);
+    color: var(--accent, #059669);
     text-decoration: none;
 }
 
@@ -44,6 +32,6 @@ input, select {
 }
 
 input:focus, select:focus {
-    border-color: var(--primary-color);
+    border-color: var(--accent, #059669);
     outline: none;
 }

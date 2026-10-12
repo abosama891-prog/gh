@@ -1,21 +1,83 @@
 :root {
-    --primary-color: #176b64;
-    --secondary-color: #397b70;
-    --accent-color: #a65d47;
-    --background-color: #f5f7f5;
-    --text-color: #293b37;
-    --font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-soft: #f1f5f9;
+    --ink: #0f172a;
+    --ink-soft: #334155;
+    --ink-muted: #64748b;
+    --line: #e2e8f0;
+    --accent: #059669;
+    --accent-dark: #047857;
+    --accent-soft: rgba(5, 150, 105, 0.08);
+    --heading: #064e3b;
+    --font-heading: 'Tajawal', 'Cairo', sans-serif;
+    --font-body: 'Cairo', sans-serif;
+    --primary-color: var(--accent);
+    --secondary-color: var(--accent-dark);
+    --accent-color: var(--accent);
+    --background-color: var(--bg);
+    --text-color: var(--ink);
+    --border-color: var(--line);
+    --font-family: var(--font-body);
+}
+
+[data-theme="dark-premium"] {
+    color-scheme: dark;
+    --bg: #0a0f1c;
+    --surface: #111827;
+    --surface-soft: #1f2937;
+    --ink: #f9fafb;
+    --ink-soft: #d1d5db;
+    --ink-muted: #9ca3af;
+    --line: #1f2937;
+    --accent: #fbbf24;
+    --accent-dark: #f59e0b;
+    --accent-soft: rgba(251, 191, 36, 0.12);
+    --heading: #fbbf24;
+    --font-heading: 'Playfair Display', 'Cairo', serif;
+}
+
+[data-theme="emerald-light"] {
+    color-scheme: light;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-soft: #f1f5f9;
+    --ink: #0f172a;
+    --ink-soft: #334155;
+    --ink-muted: #64748b;
+    --line: #e2e8f0;
+    --accent: #059669;
+    --accent-dark: #047857;
+    --accent-soft: rgba(5, 150, 105, 0.08);
+    --heading: #064e3b;
+    --font-heading: 'Tajawal', 'Cairo', sans-serif;
+}
+
+[data-theme="warm-luxury"] {
+    color-scheme: light;
+    --bg: #fefce8;
+    --surface: #ffffff;
+    --surface-soft: #fef9c3;
+    --ink: #1c1917;
+    --ink-soft: #44403c;
+    --ink-muted: #78716c;
+    --line: #e7e5e4;
+    --accent: #a16207;
+    --accent-dark: #854d0e;
+    --accent-soft: rgba(161, 98, 7, 0.1);
+    --heading: #78350f;
+    --font-heading: 'Marhey', 'Cairo', sans-serif;
 }
 
 body {
     margin: 0;
     padding: 0;
-    font-family: var(--font-family);
+    font-family: var(--font-body);
     font-size: 14px;
     font-weight: 400;
     line-height: 1.6;
-    background-color: var(--background-color);
-    color: var(--text-color);
+    background-color: var(--bg);
+    color: var(--ink);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -69,6 +131,300 @@ a:hover {
 .cars-login-submit { width: 100%; min-height: 44px; margin-top: 20px; border: 1px solid #176b64; border-radius: 5px; color: #fff; background: #176b64; font: inherit; font-weight: 700; cursor: pointer; }
 .cars-login-submit:hover { background: #12594f; }
 .cars-login-hint { display: block; margin-top: 13px; color: #748279; font-size: 10px; }
+.cars-login-guest { width: 100%; min-height: 42px; margin-top: 10px; border: 1px solid #176b64; border-radius: 5px; color: #176b64; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.cars-login-guest:hover, .cars-guest-cancel:hover { background: #edf7f4; }
+.cars-guest-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: #14231e99; }
+.cars-guest-modal { width: min(100%, 390px); padding: 24px; border: 1px solid #dce5df; border-radius: 9px; background: #fff; box-shadow: 0 18px 50px #10241d40; }
+.cars-guest-modal h2 { margin: 0; color: #263b36; font-size: 21px; }
+.cars-guest-modal p { margin: 10px 0 18px; color: #66766e; font-size: 13px; }
+.cars-guest-modal label { display: block; margin-bottom: 7px; color: #40554b; font-size: 12px; font-weight: 650; }
+.cars-guest-modal input { width: 100%; min-height: 43px; padding: 0 11px; border: 1px solid #d6e0d9; border-radius: 5px; color: #263b36; background: #fcfdfc; font: inherit; }
+.cars-guest-actions { display: flex; gap: 10px; }
+.cars-guest-actions .cars-login-submit { flex: 1; }
+.cars-guest-cancel { flex: 1; min-height: 44px; margin-top: 20px; border: 1px solid #d6e0d9; border-radius: 5px; color: #40554b; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+
+.cars-portal {
+    --portal-teal: #0f766e;
+    --portal-gold: #a66e2d;
+    position: relative;
+    isolation: isolate;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    padding: 32px 20px;
+    color: #f8faf9;
+    background: linear-gradient(132deg, #0b514f 0%, var(--portal-teal) 48%, #8b642f 100%);
+    font-family: var(--font-family);
+}
+
+.cars-portal::before, .cars-portal::after {
+    position: absolute;
+    z-index: -1;
+    content: "";
+    pointer-events: none;
+}
+
+.cars-portal::before {
+    inset: -18%;
+    background: radial-gradient(ellipse at 50% 8%, #ffffff18, transparent 47%), radial-gradient(ellipse at 8% 90%, #062e2b55, transparent 45%);
+}
+
+.cars-portal::after {
+    width: min(72vw, 720px);
+    aspect-ratio: 1;
+    inset-inline-start: -25vw;
+    bottom: -48vw;
+    border: 1px solid #ffffff14;
+    border-radius: 50%;
+    box-shadow: 0 0 0 44px #ffffff08, 0 0 0 90px #ffffff06;
+}
+
+.cars-landing-panel, .cars-auth-panel {
+    width: min(100%, 590px);
+    border: 1px solid #ffffff38;
+    border-radius: 24px;
+    background: #082f2cbf;
+    box-shadow: 0 26px 80px #06221f40, inset 0 1px #ffffff1a;
+    backdrop-filter: blur(14px);
+}
+
+.cars-landing-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: clamp(28px, 6vw, 54px);
+    text-align: center;
+    animation: carsPortalAppear 500ms ease both;
+}
+
+.cars-landing-emblem {
+    display: grid;
+    width: clamp(130px, 25vw, 190px);
+    aspect-ratio: 1;
+    place-items: center;
+    margin-bottom: 20px;
+    border: 1px solid #ffffff70;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #ffffffed, #eaf4f0);
+    box-shadow: 0 16px 48px #071f1c55, 0 0 0 12px #ffffff14;
+}
+
+.cars-landing-emblem img {
+    display: block;
+    width: 82%;
+    height: 82%;
+    object-fit: contain;
+}
+
+.cars-portal-eyebrow {
+    margin: 0 0 8px;
+    color: #f4d59c;
+    font-size: 13px;
+    font-weight: 750;
+    letter-spacing: .08em;
+}
+
+.cars-landing-panel h1 {
+    color: #fff;
+    font-size: clamp(25px, 5vw, 37px);
+    font-weight: 800;
+}
+
+.cars-landing-panel h1 span { color: #f1cf8f; }
+.cars-landing-description { margin: 10px 0 28px; color: #e0eeea; font-size: 14px; }
+
+.cars-landing-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.cars-portal-action {
+    display: flex;
+    min-height: 104px;
+    align-items: center;
+    gap: 12px;
+    padding: 18px;
+    border: 1px solid #ffffff54;
+    border-radius: 15px;
+    color: #fff;
+    text-align: right;
+    cursor: pointer;
+    transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.cars-portal-action:hover { transform: translateY(-4px); filter: brightness(1.08); box-shadow: 0 14px 30px #041c1a4d; }
+.cars-portal-action > svg:first-child { width: 27px; height: 27px; flex: 0 0 auto; }
+.cars-portal-action > svg:last-child { width: 17px; height: 17px; flex: 0 0 auto; margin-inline-start: auto; opacity: .78; }
+.cars-portal-action span { display: grid; gap: 4px; }
+.cars-portal-action strong { font-size: 15px; }
+.cars-portal-action small { color: #f0f6f3d9; font-size: 11px; }
+.cars-portal-admin-action { background: linear-gradient(135deg, #087e70, #12635e); }
+.cars-portal-guest-action { background: linear-gradient(135deg, #397b99, #245870); }
+.cars-landing-footer { margin-top: 34px; color: #ffffffa6; font-size: 11px; }
+
+.cars-auth-panel {
+    position: relative;
+    width: min(100%, 440px);
+    padding: 34px clamp(23px, 6vw, 42px) 38px;
+    background: #062623b8;
+    animation: carsPortalAppear 350ms ease both;
+}
+
+.cars-auth-background {
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    overflow: hidden;
+    background: #062623;
+}
+
+.cars-auth-background::after {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, #062623a8 0%, #062623bf 48%, #062623e8 100%);
+    content: "";
+}
+
+.cars-auth-background img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 55%;
+    opacity: 0;
+    animation: carsTruckSlideshow 16s ease-in-out infinite;
+}
+
+.cars-auth-background-front { animation-delay: 0s !important; }
+.cars-auth-background-rear { animation-delay: -8s !important; }
+
+.cars-portal-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 11px;
+    border: 1px solid #ffffff45;
+    border-radius: 9px;
+    color: #f5f8f6;
+    background: #ffffff0d;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+
+.cars-portal-back:hover { background: #ffffff1c; }
+.cars-portal-back svg { width: 16px; height: 16px; }
+.cars-auth-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0 25px; color: #e8f2ef; font-size: 12px; font-weight: 700; }
+.cars-auth-brand img { width: 58px; height: 42px; border: 1px solid #ffffff55; border-radius: 12px; object-fit: cover; object-position: center 56%; box-shadow: 0 5px 15px #041d1c35; }
+.cars-auth-icon { display: grid; width: 64px; height: 64px; place-items: center; margin: 0 auto 13px; border: 1px solid #ffffff55; border-radius: 20px; background: #ffffff12; }
+.cars-auth-icon svg { width: 30px; height: 30px; }
+.cars-auth-admin-icon { color: #f3d192; }
+.cars-auth-guest-icon { color: #92d5ed; }
+.cars-auth-panel > h1 { color: #fff; font-size: 25px; text-align: center; }
+.cars-auth-description { margin: 8px 0 23px; color: #d5e5e0; font-size: 13px; text-align: center; }
+.cars-auth-form { display: grid; gap: 9px; }
+.cars-auth-form label { margin-top: 5px; color: #f0f6f3; font-size: 12px; font-weight: 700; }
+.cars-auth-form input { width: 100%; min-height: 47px; padding: 0 13px; border: 1px solid #ffffff45; border-radius: 9px; color: #fff; background: #ffffff10; font: inherit; }
+.cars-auth-form input::placeholder { color: #ffffff80; }
+.cars-auth-form input:focus { border-color: #efcf91; outline: 2px solid #efcf9140; }
+.cars-auth-form .cars-login-error { color: #ffc3b9; }
+.cars-auth-submit { min-height: 48px; margin-top: 12px; border: 0; border-radius: 9px; color: white; font: inherit; font-weight: 750; cursor: pointer; transition: transform 150ms ease, filter 150ms ease; }
+.cars-auth-submit:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+.cars-auth-submit:disabled { opacity: .65; cursor: wait; }
+.cars-auth-submit-admin { background: linear-gradient(120deg, #0f766e, #178a76); }
+.cars-auth-submit-guest { background: linear-gradient(120deg, #287b9a, #24617d); }
+
+@keyframes carsPortalAppear {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 560px) {
+    .cars-portal { min-height: 100svh; padding: 18px 14px; }
+    .cars-landing-panel { padding: 30px 20px; border-radius: 19px; }
+    .cars-landing-actions { grid-template-columns: 1fr; gap: 10px; }
+    .cars-portal-action { min-height: 82px; padding: 14px 17px; }
+    .cars-landing-description { margin-bottom: 22px; }
+    .cars-landing-footer { margin-top: 25px; }
+    .cars-auth-panel { padding: 25px 21px 30px; border-radius: 19px; }
+    .cars-auth-background img { object-position: 57% center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cars-portal *, .cars-portal *::before, .cars-portal *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    .cars-landing-background-front { opacity: 1 !important; }
+    .cars-landing-background-rear { display: none !important; }
+    .cars-auth-background-front { opacity: 1 !important; }
+    .cars-auth-background-rear { display: none !important; }
+}
+
+.cars-portal-landing {
+    background: radial-gradient(ellipse at 0% 100%, #a66e2d52, transparent 42%), linear-gradient(125deg, #073b39, #0f766e 63%, #174e4c);
+}
+
+.cars-landing-panel {
+    position: relative;
+    display: flex;
+    width: min(1180px, 100%);
+    min-height: min(720px, calc(100svh - 64px));
+    align-items: center;
+    padding: clamp(26px, 5vw, 58px);
+    overflow: hidden;
+    isolation: isolate;
+    border-color: #ffffff28;
+    background: #082d2b;
+    background-size: cover;
+    box-shadow: 0 26px 80px #06221f40;
+}
+
+.cars-landing-background { position: absolute; z-index: -1; inset: 0; overflow: hidden; }
+.cars-landing-background::after { position: absolute; inset: 0; background: linear-gradient(90deg, #062623f2 0%, #082d2bd9 39%, #082d2b9c 75%, #082d2b75 100%), linear-gradient(0deg, #062623a8, transparent 60%); content: ""; }
+.cars-landing-background img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 55%; opacity: 0; animation: carsTruckSlideshow 16s ease-in-out infinite; }
+.cars-landing-background-front { animation-delay: 0s !important; }
+.cars-landing-background-rear { animation-delay: -8s !important; }
+.cars-landing-copy { position: relative; z-index: 1; width: min(510px, 58%); margin-inline-start: auto; }
+.cars-landing-brand { display: flex; align-items: center; gap: 12px; margin-bottom: clamp(28px, 5vh, 48px); color: #e5f2ee; font-size: 13px; font-weight: 750; }
+.cars-landing-thumb { position: relative; display: block; width: 72px; height: 52px; flex: 0 0 auto; overflow: hidden; border-radius: 15px; background: #0d514c; box-shadow: 0 5px 15px #041d1c35; }
+.cars-landing-thumb::after { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg, #0f766e2e 0%, transparent 45%, #082d2b55 100%); content: ""; pointer-events: none; }
+.cars-landing-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 56%; opacity: .9; -webkit-mask-image: radial-gradient(ellipse at center, #000 53%, #000b 77%, transparent 100%); mask-image: radial-gradient(ellipse at center, #000 53%, #000b 77%, transparent 100%); }
+.cars-portal-eyebrow { margin-bottom: 12px; color: #f2d091; font-size: 14px; letter-spacing: .03em; }
+.cars-landing-panel h1 { max-width: 540px; font-size: clamp(35px, 5.6vw, 60px); line-height: 1.17; }
+.cars-landing-panel h1 span { color: #f2d091; }
+.cars-landing-description { max-width: 470px; margin: 18px 0 30px; color: #d4e5df; font-size: clamp(14px, 1.6vw, 17px); line-height: 1.9; }
+.cars-landing-actions { grid-template-columns: 1fr; max-width: 480px; gap: 12px; }
+.cars-portal-action { min-height: 78px; padding: 15px 18px; }
+.cars-portal-action strong { font-size: 15px; }
+.cars-portal-action small { font-size: 12px; }
+.cars-landing-footer { margin-top: 30px; }
+
+@keyframes carsTruckSlideshow {
+    0%, 43% { opacity: 1; }
+    50%, 93% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+@media (max-width: 760px) {
+    .cars-landing-panel {
+        width: 100%;
+        min-height: calc(100svh - 36px);
+        justify-content: center;
+        padding: clamp(22px, 6vw, 38px);
+        background: #082d2b;
+    }
+    .cars-landing-background img { object-position: 57% center; }
+    .cars-landing-background::after { background: linear-gradient(180deg, #062623aa 0%, #062623dc 48%, #062623f0 100%); }
+    .cars-landing-copy { width: min(100%, 510px); margin-inline: auto; }
+    .cars-landing-thumb { width: 64px; height: 47px; border-radius: 14px; }
+    .cars-landing-brand { margin-bottom: 28px; }
+    .cars-landing-panel h1 { font-size: clamp(34px, 8vw, 48px); }
+    .cars-landing-description { margin: 13px 0 22px; }
+    .cars-landing-footer { margin-top: 22px; }
+}
 
 .fleet-app .fleet-button, .fleet-app .fleet-install, .fleet-app .fleet-logout { box-shadow: none; }
 .fleet-app .fleet-button-primary { background: #176b64; }

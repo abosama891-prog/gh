@@ -1,14 +1,8 @@
 .fleet-app {
-  --ink: #263b36;
-  --muted: #6e7d76;
-  --line: #dfe6e1;
-  --teal: #176b64;
-  --surface: #ffffff;
-  --surface-soft: #f5f8f6;
   min-height: 100vh;
   color: var(--ink);
-  background: var(--app-background, #f4f7f5);
-  font-family: var(--font-family, 'Segoe UI', Tahoma, Arial, sans-serif);
+  background: var(--app-background, var(--bg, #f8fafc));
+  font-family: var(--font-body, 'Cairo', sans-serif);
   padding: 0 4.2% 30px;
   box-sizing: border-box;
 }
@@ -34,7 +28,7 @@
 .fleet-update-later { background: rgba(255, 255, 255, 0.2); color: #fff; }
 .fleet-update-btn:hover { transform: translateY(-1px); opacity: 0.9; }
 .fleet-app.fleet-theme-dark { color-scheme: dark; }
-.fleet-app.fleet-theme-dark :is(.fleet-theme-button, .fleet-theme-picker, .fleet-theme-picker button, .fleet-intro, .fleet-button-light, .fleet-section-bar, .fleet-section-bar button, .fleet-tabs button, .fleet-metric, .fleet-section, .fleet-user-permission-note, .fleet-user-form input, .fleet-user-form select, .fleet-table td, .fleet-vehicle, .fleet-detail-stats, .fleet-global-rate, .fleet-global-rate input, .fleet-rate-value, .fleet-rate-editor input, .fleet-rate-editor .fleet-rate-cancel, .ledger-filters, .ledger-period-controls button, .ledger-filter-grid input, .ledger-filter-grid select, .fleet-detail-table-wrap, .fleet-detail-ledger tbody td, .fleet-search, .fleet-search input, .fleet-confirm-dialog, .fleet-confirm-input, .fleet-confirm-cancel, .fleet-modal, .fleet-entry-modal, .entry-form-header, .entry-form-header button, .entry-form-section, .entry-field input, .entry-field select, .entry-amount-total, .entry-amount-add, .entry-amount-chip, .entry-distance) { border-color: var(--line); color: var(--ink); background: var(--surface); }
+.fleet-app.fleet-theme-dark :is(.fleet-theme-button, .fleet-theme-picker, .fleet-font-options, .fleet-intro, .fleet-button-light, .fleet-section-bar, .fleet-section-bar button, .fleet-tabs button, .fleet-metric, .fleet-section, .fleet-user-permission-note, .fleet-user-form input, .fleet-user-form select, .fleet-table td, .fleet-vehicle, .fleet-detail-stats, .fleet-global-rate, .fleet-global-rate input, .fleet-rate-value, .fleet-rate-editor input, .fleet-rate-editor .fleet-rate-cancel, .ledger-filters, .ledger-period-controls button, .ledger-filter-grid input, .ledger-filter-grid select, .fleet-detail-table-wrap, .fleet-detail-ledger tbody td, .fleet-search, .fleet-search input, .fleet-confirm-dialog, .fleet-confirm-input, .fleet-confirm-cancel, .fleet-modal, .fleet-entry-modal, .entry-form-header, .entry-form-header button, .entry-form-section, .entry-field input, .entry-field select, .entry-amount-total, .entry-amount-add, .entry-amount-chip, .entry-distance) { border-color: var(--line); color: var(--ink); background: var(--surface); }
 .fleet-app.fleet-theme-dark .fleet-intro { background: linear-gradient(120deg, #253449, #1e293b 60%, #253449); }
 .fleet-app.fleet-theme-dark :is(.fleet-kicker, .fleet-overline, .fleet-subtitle, .fleet-live, .fleet-tab-copy small, .fleet-metric > span, .fleet-metric strong small, .fleet-metric p, .fleet-user-permission-note, .fleet-user-storage-note, .fleet-table td, .fleet-table td small, .fleet-vehicle-data span, .fleet-global-rate > div span, .fleet-global-rate label, .fleet-rate-value small, .ledger-filters-heading > span, .ledger-filter-grid label, .fleet-empty-state, .fleet-confirm-dialog p, .entry-field, .entry-field-help, .entry-section-title p, .fleet-footer) { color: #aab7c7; }
 .fleet-app.fleet-theme-dark :is(.fleet-intro h1, .fleet-tabs button.is-active, .fleet-tab-copy strong, .fleet-table td strong, .fleet-vehicle-data strong, .fleet-global-rate > div strong, .ledger-filters-heading h2, .fleet-detail-stats strong, .fleet-confirm-dialog h2, .entry-section-title h3, .entry-form-header h2) { color: var(--ink); }
@@ -62,25 +56,50 @@
 .fleet-app.fleet-theme-dark .fleet-entry-fields .fleet-input-row:nth-child(4n) > span { color: var(--ink); background: var(--surface-soft); }
 .fleet-app.fleet-theme-dark .fleet-entry-fields .fleet-input-row input,
 .fleet-app.fleet-theme-dark .fleet-entry-fields .fleet-input-row select { color: var(--ink); background: var(--surface); }
-.fleet-header { height: 82px; display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid var(--teal); }
+.fleet-header { height: 82px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 3px solid #a66e2d; border-radius: 0 0 10px 10px; background: #fefce8; }
 .fleet-brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; }
 .fleet-brand-button { padding: 0; border: 0; background: transparent; text-align: right; }
 .fleet-brand-copy { display: block; min-width: 0; }
-.fleet-brand-mark { width: 43px; height: 43px; display: block; overflow: hidden; border-radius: 11px; box-shadow: 0 5px 13px #176b6430; }
+.fleet-brand-mark { width: 54px; height: 42px; display: block; overflow: hidden; border-radius: 12px; box-shadow: 0 5px 13px #176b6430; }
 .fleet-brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .fleet-brand strong { display: block; color: var(--ink); font-size: 18px; line-height: 1.2; font-weight: 800; white-space: nowrap; }
 .fleet-brand strong em { color: var(--teal); font-style: normal; }
 .fleet-header-actions, .fleet-intro-actions { display: flex; align-items: center; gap: 12px; }
+.fleet-user-greeting { color: var(--teal); font-size: 13px; font-weight: 700; white-space: nowrap; }
 .fleet-live { color: #52635f; font-size: 12px; }
 .fleet-live i { display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #36a27a; }
 .fleet-theme-button { padding: 9px 12px; border: 1px solid var(--line); border-radius: 5px; color: var(--teal); background: var(--surface); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .fleet-theme-button:hover { background: var(--surface-soft); }
-.fleet-theme-picker { display: grid; gap: 9px; padding: 11px 13px; margin: 10px 0 0; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); box-shadow: 0 8px 20px #203c3012; }
-.fleet-theme-picker strong { color: var(--ink); font-size: 12px; }
-.fleet-theme-picker > div { display: flex; flex-wrap: wrap; gap: 7px; }
-.fleet-theme-picker button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); background: var(--surface); font: inherit; font-size: 11px; cursor: pointer; }
-.fleet-theme-picker button.is-active { border-color: var(--teal); box-shadow: 0 0 0 2px color-mix(in srgb, var(--teal) 20%, transparent); }
-.fleet-theme-picker i { width: 12px; height: 12px; border-radius: 50%; }
+.fleet-theme-picker { width: min(100%, 520px); display: grid; gap: 13px; padding: 17px; margin: 12px 0 0; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 14px 32px #203c3018; }
+.fleet-theme-picker-heading, .fleet-font-picker { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fleet-theme-picker-heading > div, .fleet-font-picker > div:first-child { display: grid; gap: 3px; }
+.fleet-theme-picker-heading strong, .fleet-font-picker strong { color: var(--theme-heading); font-family: var(--font-heading); font-size: 17px; font-weight: 800; }
+.fleet-theme-picker-heading small, .fleet-font-picker small { color: var(--muted); font-size: 10px; }
+.fleet-theme-current { flex: 0 0 auto; padding: 5px 9px; border: 1px solid var(--line); border-radius: 99px; color: var(--theme-heading); background: var(--surface-soft); font-size: 10px; font-weight: 750; }
+.fleet-theme-options { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.fleet-theme-option { position: relative; min-width: 0; display: grid; gap: 8px; padding: 12px 14px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: linear-gradient(105deg, var(--preset-surface) 0%, var(--preset-surface) 72%, color-mix(in srgb, var(--preset-accent) 7%, var(--preset-background)) 100%); font: inherit; text-align: right; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.fleet-theme-option::before { position: absolute; inset-block: 0; inset-inline-start: 0; width: 3px; background: var(--preset-accent); content: ""; opacity: .45; transition: width .16s ease, opacity .16s ease; }
+.fleet-theme-option:hover { border-color: color-mix(in srgb, var(--preset-accent) 55%, var(--line)); transform: translateY(-1px); }
+.fleet-theme-option.is-active { border-color: var(--preset-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--preset-accent) 14%, transparent), 0 5px 14px color-mix(in srgb, var(--preset-accent) 10%, transparent); }
+.fleet-theme-option.is-active::before { width: 5px; opacity: 1; }
+.fleet-theme-option:focus-visible { outline: 2px solid var(--preset-accent); outline-offset: 2px; }
+.fleet-theme-option-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.fleet-theme-option-name { min-width: 0; display: flex; align-items: center; gap: 8px; }
+.fleet-theme-option-name > i { width: 30px; height: 30px; display: grid; flex: 0 0 30px; place-items: center; border: 1px solid color-mix(in srgb, var(--preset-accent) 24%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--preset-accent) 10%, var(--preset-surface)); font-size: 15px; font-style: normal; }
+.fleet-theme-option-name > strong { overflow: hidden; color: var(--preset-heading); font-family: var(--font-heading); font-size: 14px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-theme-active { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 3px; padding: 4px 7px; border-radius: 99px; color: var(--preset-accent); background: color-mix(in srgb, var(--preset-accent) 10%, var(--preset-surface)); font-size: 10px; font-weight: 800; }
+.fleet-theme-option-preview { display: flex; min-width: 0; align-items: center; gap: 8px; padding-inline-start: 38px; }
+.fleet-theme-swatches { display: inline-flex; flex: 0 0 auto; direction: ltr; }
+.fleet-theme-swatches i { width: 13px; height: 13px; margin-left: -3px; border: 2px solid var(--preset-surface); border-radius: 50%; background: var(--preset-background); box-shadow: 0 0 0 1px #64748b20; }
+.fleet-theme-swatches i:nth-child(2) { background: var(--preset-accent); }
+.fleet-theme-swatches i:nth-child(3) { background: var(--preset-heading); }
+.fleet-theme-option-preview small { min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-font-picker { padding-top: 11px; border-top: 1px solid var(--line); }
+.fleet-font-picker strong { font-size: 14px; }
+.fleet-font-options { display: flex; flex: 0 0 auto; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.fleet-font-options button { min-width: 42px; padding: 5px 8px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.fleet-font-options button.is-active { color: #fff; background: var(--teal); box-shadow: 0 2px 5px color-mix(in srgb, var(--teal) 25%, transparent); }
+.fleet-font-options button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .fleet-install, .fleet-button, .fleet-link-button, .fleet-row-action { border: 0; font: inherit; cursor: pointer; }
 .fleet-install { padding: 9px 14px; color: #176b64; background: #e4f1eb; border-radius: 5px; font-size: 13px; font-weight: 700; }
 .fleet-logout { padding: 9px 14px; border: 1px solid #ead0cc; border-radius: 5px; color: #a34f43; background: #fff7f5; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
@@ -139,6 +158,7 @@
 .fleet-tab-copy strong { color: inherit; font-size: 14px; }
 .fleet-tab-copy small { color: #7c8982; font-size: 10px; font-weight: 400; }
 .fleet-notice { width: 100%; display: flex; justify-content: space-between; padding: 11px 14px; margin: -6px 0 16px; border: 1px solid #c9e4d7; border-radius: 4px; color: #1d644b; background: #edf7f0; text-align: right; white-space: pre-line; font: inherit; font-size: 13px; cursor: pointer; }
+.fleet-notice.is-error { border-color: #e6b9b5; color: #963b35; background: #fff0ef; }
 .fleet-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
 .fleet-metric { min-height: 132px; padding: 16px 18px; border: 1px solid var(--line); border-top: 3px solid #378a7b; background: #fff; }
 .fleet-metric > span { color: #65736e; font-size: 12px; }
@@ -151,6 +171,7 @@
 .fleet-section { padding: 22px 23px 23px; margin-bottom: 18px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--theme-heading, #17466e); border-radius: 8px; box-shadow: 0 10px 28px #172d3d0b; }
 .fleet-section-heading { min-height: 52px; display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
 .fleet-section-heading h2, .fleet-formula h2 { margin: 0; color: var(--theme-heading, #17466e); font-size: 21px; font-weight: 800; }
+.fleet-section-heading h2, .fleet-intro h1, .fleet-detail-heading h2, .fleet-vehicles-heading h2 { font-family: var(--font-heading); }
 .fleet-section-heading > div:first-child h2 { display: table; padding: 6px 11px; border-right: 4px solid var(--teal); border-radius: 5px; background: color-mix(in srgb, var(--teal) 9%, var(--surface)); line-height: 1.45; }
 .fleet-section-heading .fleet-overline { margin-bottom: 4px; color: var(--teal); font-weight: 750; }
 .fleet-app.fleet-theme-dark .fleet-section-heading > div:first-child h2 { color: var(--ink); background: color-mix(in srgb, var(--teal) 18%, var(--surface)); }
@@ -253,13 +274,14 @@
 .fleet-vehicle-card:hover { border-color: var(--vehicle-accent, #71a99b); box-shadow: 0 4px 14px #1d393014; }
 .fleet-vehicle-tone { --vehicle-accent: #19776c; --vehicle-tint: #edf6f3; --vehicle-line: #cfe4dc; }
 .fleet-vehicle-card.fleet-vehicle-tone { border-color: var(--vehicle-line); border-top: 3px solid var(--vehicle-accent); background: linear-gradient(155deg, #fff 62%, var(--vehicle-tint)); }
+.fleet-vehicle-card { border-inline-start: 4px solid #a66e2d; border-radius: 10px; }
 .fleet-vehicle-card.fleet-vehicle-tone .fleet-plate { color: var(--vehicle-accent); }
 .fleet-vehicle-card.fleet-vehicle-tone .fleet-car-icon { background: var(--vehicle-tint); box-shadow: 0 0 0 1px var(--vehicle-line); }
 .fleet-vehicle-summary-row { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .fleet-vehicle-summary-toggle { width: auto; min-width: 0; flex: 0 1 auto; display: flex; align-items: center; gap: 9px; padding: 0; border: 0; color: var(--vehicle-accent); background: transparent; font: inherit; text-align: right; cursor: pointer; }
 .fleet-vehicle-summary-toggle:focus-visible { border-radius: 5px; outline: 2px solid var(--vehicle-accent); outline-offset: 4px; }
 .fleet-vehicle-summary-copy { min-width: 0; max-width: clamp(90px, 30vw, 180px); flex: 0 1 auto; display: grid; gap: 3px; }
-.fleet-vehicle-summary-copy strong { overflow: hidden; color: var(--ink); font-size: 15px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-vehicle-summary-copy strong { width: fit-content; max-width: 100%; overflow: hidden; padding: 2px 7px; border-radius: 5px; color: #fff !important; background: #a66e2d; font-size: 13px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .fleet-vehicle-summary-copy small { overflow: hidden; color: var(--vehicle-accent); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .fleet-vehicle-edit-icon { width: 30px; height: 30px; display: grid; flex: 0 0 30px; place-items: center; padding: 0; border: 1px solid var(--vehicle-line); border-radius: 8px; color: var(--vehicle-accent); background: linear-gradient(145deg, #fff, var(--vehicle-tint)); box-shadow: 0 2px 5px #173c3212; cursor: pointer; transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease, transform .15s ease; }
 .fleet-vehicle-edit-icon:hover { border-color: var(--vehicle-accent); box-shadow: 0 3px 9px #173c3220; transform: translateY(-1px); }
@@ -413,6 +435,13 @@
 .ledger-table td.ledger-plate { color: #145ab4; font-size: 13px; font-weight: 700; }
 .monthly-summary-sheet { margin-top: 18px; }
 .monthly-summary-titlebar { min-height: 76px; }
+.monthly-summary-title { display: grid; gap: 3px; }
+.monthly-summary-title > span { color: #ffffffc7; font-size: 10px; }
+.monthly-summary-toggle { display: inline-flex; width: fit-content; align-items: center; gap: 7px; padding: 0; border: 0; color: #fff; background: transparent; font: inherit; cursor: pointer; }
+.monthly-summary-toggle > span { font-size: 20px; font-weight: 800; }
+.monthly-summary-toggle svg { width: 18px; height: 18px; transition: transform .18s ease; }
+.monthly-summary-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.monthly-summary-toggle:focus-visible { border-radius: 4px; outline: 2px solid #fff; outline-offset: 4px; }
 .monthly-summary-controls { display: flex; align-items: center; gap: 10px; }
 .monthly-summary-controls .ledger-month-picker { min-width: 170px; }
 .monthly-summary-controls .ledger-month-select { min-height: 38px; border-color: #ffffff70; color: #fff; background: #ffffff18; }
@@ -475,14 +504,25 @@
 .entry-form-body { display: grid; gap: 12px; min-height: 0; padding: 15px 18px; overflow-y: auto; overscroll-behavior: contain; }
 .entry-form-section { padding: 15px; border: 1px solid #e0e7e1; border-radius: 5px; background: #fff; }
 .entry-section-title { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; margin-bottom: 13px; border-bottom: 1px solid #edf0ed; }
+.entry-section-toggle { width: 100%; padding: 0 0 12px; color: inherit; background: transparent; font: inherit; text-align: right; cursor: pointer; }
+.entry-section-toggle > div { flex: 1; }
+.entry-section-toggle > svg { width: 18px; height: 18px; transition: transform .18s ease; }
+.entry-section-toggle[aria-expanded="false"] > svg { transform: rotate(-90deg); }
+.entry-section-toggle:focus-visible { outline: 2px solid var(--section-accent); outline-offset: 3px; }
 .entry-section-title > span { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; color: #fff; background: linear-gradient(135deg, #168779, #155e75); font-size: 11px; font-weight: 800; box-shadow: 0 3px 8px #176b6426; }
 .entry-section-title h3 { margin: 0; color: #155e58; font-size: 15px; font-weight: 800; }
 .entry-form-section:nth-child(1) { --section-accent: #3974a5; --section-tint: #eff5fa; --section-line: #cbdce9; }
 .entry-form-section:nth-child(2) { --section-accent: #168071; --section-tint: #edf7f3; --section-line: #c8e2d9; }
 .entry-form-section:nth-child(3) { --section-accent: #a66b2c; --section-tint: #fbf5e9; --section-line: #ead9b9; }
+.entry-form-section.entry-fuel-section { --section-accent: #a66b2c; --section-tint: #fbf5e9; --section-line: #ead9b9; border-color: var(--section-line); background: var(--section-tint); }
 .entry-form-section .entry-section-title > span { background: var(--section-accent); box-shadow: 0 3px 8px color-mix(in srgb, var(--section-accent) 18%, transparent); }
 .entry-form-section .entry-section-title h3 { color: var(--section-accent); }
 .entry-form-section .entry-section-title { border-color: var(--section-line); }
+.entry-form-section.entry-fuel-section .entry-section-title h3 { color: var(--section-accent); }
+.entry-form-section.entry-fuel-section .entry-section-title > span { background: var(--section-accent); }
+.entry-form-section.entry-fuel-section .entry-field,
+.entry-form-section.entry-fuel-section .entry-fuel-grid > .entry-field:nth-child(n) { --field-accent: #8a5e1a; --field-tint: #fbf5e8; --field-line: #ead9b6; }
+.fleet-app.fleet-theme-dark .entry-form-section.entry-fuel-section { --section-accent: #fbbf24; --section-tint: #2c2418; --section-line: #66501f; }
 .fleet-app.fleet-theme-dark .entry-section-title h3 { color: #79c9b3; }
 .entry-section-title p { margin: 2px 0 0; color: #87928d; font-size: 10px; }
 .entry-form-grid { display: grid; gap: 12px; }
@@ -521,11 +561,6 @@
 .entry-trip-grid .entry-field:nth-child(2) { --field-accent: #8a5e1a; --field-tint: #fbf5e8; --field-line: #ead9b6; }
 .entry-trip-grid .entry-field:nth-child(3) { --field-accent: #674c9a; --field-tint: #f4f0fa; --field-line: #ddd2ee; }
 .entry-trip-grid .entry-field:nth-child(4) { --field-accent: #36745d; --field-tint: #eff7f1; --field-line: #cce2d2; }
-.entry-fuel-grid > .entry-field:nth-child(1) { --field-accent: #376f91; --field-tint: #edf4f8; --field-line: #ccdeea; }
-.entry-fuel-grid > .entry-field:nth-child(2) { --field-accent: #985e32; --field-tint: #faf2eb; --field-line: #ead6c4; }
-.entry-fuel-grid > .entry-field:nth-child(4) { --field-accent: #287660; --field-tint: #edf7f1; --field-line: #c8e1d2; }
-.entry-fuel-grid > .entry-field:nth-child(5) { --field-accent: #745c9d; --field-tint: #f4f0fa; --field-line: #ddd3ed; }
-.entry-fuel-grid > .entry-field:nth-child(6) { --field-accent: #ae4e3e; --field-tint: #fbf0ed; --field-line: #eccfc8; }
 .entry-expense-grid > .entry-field:nth-child(1) { --field-accent: #3974a5; --field-tint: #eff5fa; --field-line: #cbdce9; }
 .entry-expense-grid > .entry-field:nth-child(2) { --field-accent: #a15342; --field-tint: #fbf0ed; --field-line: #ebd0c9; }
 .entry-expense-grid > .entry-field:nth-child(3) { --field-accent: #577b3d; --field-tint: #f1f6eb; --field-line: #d5e2c5; }
@@ -634,29 +669,39 @@
   .fleet-update-actions { margin: 0; }
   .fleet-update-btn { flex: 1; }
   .fleet-app { padding: 0 16px 22px; }
-  .fleet-vehicle-grid { grid-template-columns: 1fr; gap: 10px; }
-  .fleet-vehicle-card { padding: 12px; }
-  .fleet-car-icon { width: 38px; height: 38px; border-radius: 9px; }
+  .fleet-vehicle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .fleet-vehicle-card { min-width: 0; padding: 9px; }
+  .fleet-vehicle-summary-row { flex-wrap: wrap; }
+  .fleet-vehicle-summary-toggle { flex: 1 1 100%; }
+  .fleet-vehicle-summary-copy { max-width: calc(100% - 48px); }
+  .fleet-vehicle-summary-spacer, .fleet-vehicle-summary-row .fleet-gap { display: none; }
+  .fleet-car-icon { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 8px; }
   .fleet-vehicle h3 { margin-top: 8px; font-size: 14px; }
   .fleet-plate { margin-bottom: 8px; font-size: 11px; }
   .fleet-vehicle-data { gap: 7px 10px; padding: 8px 0; margin-bottom: 8px; }
   .fleet-vehicle-data > span { font-size: 9px; }
   .fleet-vehicle-data > span strong { margin-top: 2px; font-size: 11px; }
-  .fleet-vehicle-summary-row { gap: 6px; }
+  .fleet-vehicle-summary-row { gap: 5px; }
   .fleet-vehicle-summary-toggle { gap: 7px; }
-  .fleet-vehicle-summary-copy strong { font-size: 13px; }
+  .fleet-vehicle-summary-copy strong { font-size: 11px; }
   .fleet-vehicle-summary-copy small { font-size: 10px; }
   .fleet-vehicle-edit-icon { width: 27px; height: 27px; flex-basis: 27px; border-radius: 7px; }
   .fleet-vehicle-summary-row .fleet-gap { max-width: 42%; padding: 5px 6px; font-size: 9px; text-align: center; }
   .fleet-card-actions { gap: 7px; padding-top: 8px; }
   .fleet-card-actions .fleet-open-details { font-size: 11px; }
   .fleet-vehicle-edit { min-height: 28px; padding: 0 7px; font-size: 9px; }
-  .fleet-header { height: 58px; min-width: 0; gap: 5px; }
+  .fleet-header { height: 58px; min-width: 0; gap: 5px; padding: 0 7px; }
   .fleet-brand { min-width: 0; flex: 1 1 auto; gap: 5px; }
-  .fleet-brand-mark { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 8px; }
+  .fleet-brand-mark { width: 44px; height: 34px; flex: 0 0 44px; border-radius: 9px; }
   .fleet-brand strong { max-width: 112px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; }
   .fleet-live { display: none; }
   .fleet-header-actions { flex: 0 0 auto; gap: 4px; }
+  .fleet-theme-picker { width: 100%; padding: 13px; border-radius: 11px; }
+  .fleet-theme-option { padding: 11px 12px; }
+  .fleet-theme-picker-heading strong { font-size: 15px; }
+  .fleet-font-picker { align-items: flex-start; flex-direction: column; }
+  .fleet-font-options { width: 100%; }
+  .fleet-font-options button { flex: 1; }
   .fleet-theme-button, .fleet-install, .fleet-logout { min-height: 34px; max-width: 48px; padding: 4px 5px; border-radius: 5px; font-size: 9px; line-height: 1.2; text-align: center; white-space: normal; }
   .fleet-header-icon-button { width: 34px; min-width: 34px; min-height: 34px; padding: 0; border-radius: 5px; }
   .fleet-header-icon-button svg { width: 17px; height: 17px; }
@@ -700,7 +745,8 @@
   .fleet-entry-screen .fleet-entry-table { min-width: 920px; }
   .ledger-summary-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
   .monthly-summary-titlebar { align-items: flex-start; flex-direction: column; gap: 9px; padding: 11px; }
-  .monthly-summary-titlebar strong { font-size: 16px; }
+  .monthly-summary-toggle > span { font-size: 16px; }
+  .monthly-summary-title > span { font-size: 9px; }
   .monthly-summary-controls { width: 100%; justify-content: space-between; gap: 8px; }
   .monthly-summary-controls .ledger-month-picker { width: min(68%, 220px); min-width: 0; }
   .monthly-summary-controls .ledger-month-select { min-height: 36px; font-size: 10px; }
