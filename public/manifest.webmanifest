@@ -9,15 +9,15 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0f172a",
-  "theme_color": "#0f766e",
+  "background_color": "#f5f1ed",
+  "theme_color": "#f25d2d",
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/fleet-truck-front.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "src": "/icon-speedometer.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

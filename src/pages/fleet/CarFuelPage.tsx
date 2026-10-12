@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type ExcelJS from 'exceljs';
-import { ArrowRight, CarFront, Check, ChevronDown, Download, Fuel, LayoutDashboard, LogOut, Pencil, RefreshCw, Settings, Trash2, Upload } from 'lucide-react';
+import { ArrowRight, CarFront, Check, ChevronDown, Download, Fuel, LayoutDashboard, LocateFixed, LogOut, MapPinned, Pencil, Plus, RefreshCw, Settings, Trash2, Upload } from 'lucide-react';
 import { addGuest, deleteGuest as deleteGuestFromCloud, setGuestActive, subscribeToFleetUsers, updateGuest } from '../../services/fleetUserStore';
 import type { FleetGuest, FleetUser } from '../../services/fleetUserStore';
 import { isFirebaseConfigured } from '../../services/firebase';
-import { readCloudFleetData, saveCloudFleetData, saveCloudFleetDataStrict } from '../../services/fleetCloudStore';
+import { readCloudFleetData, readCloudRouteEntries, saveCloudFleetData, saveCloudFleetDataStrict, saveCloudRouteEntries } from '../../services/fleetCloudStore';
 import { firebaseAuth } from '../../services/firebase';
 import { applyUpdate } from '../../services/serviceWorker';
 import { clearDeferredPrompt, getDeferredPrompt } from '../../services/pwaInstall';
+import RouteMapPicker from './RouteMapPicker';
+import { reverseGeocode } from './reverseGeocode';
 import './car-fuel.css';
 
 type Vehicle = {
@@ -38,6 +40,20 @@ type FuelEntry = {
   expenses?: Partial<ExpenseBreakdown>;
   expenseExpressions?: Partial<Record<keyof ExpenseBreakdown, string>>;
 };
+
+type RouteEntry = {
+  id: string;
+  date: string;
+  vehicleId: string | null;
+  vehicleName: string;
+  plate: string;
+  departure: string;
+  route: string;
+  representative: string;
+  driver: string;
+};
+
+type RouteForm = Omit<RouteEntry, 'id' | 'vehicleId'> & { vehicleId: string };
 
 type ExpenseBreakdown = {
   mealAllowance: number;
@@ -79,6 +95,7 @@ type EntryDraft = {
 
 type FleetData = { vehicles: Vehicle[]; entries: FuelEntry[]; allowancePricePerLiter?: number };
 const STORAGE_KEY = 'company-fleet-fuel-v1';
+const ROUTE_STORAGE_KEY = 'company-fleet-routes-v1';
 const DEFAULT_ALLOWANCE_PRICE = 15.75;
 const themePresets = {
   'dark-premium': {
@@ -144,6 +161,7 @@ const themeOptions: ThemeKey[] = ['dark-premium', 'emerald-light', 'warm-luxury'
 const fontSizePresets = { small: 'صغير', medium: 'متوسط', large: 'كبير' } as const;
 type FontSizeKey = keyof typeof fontSizePresets;
 const today = () => new Date().toISOString().slice(0, 10);
+const createEmptyRouteForm = (): RouteForm => ({ date: today(), vehicleId: '', vehicleName: '', plate: '', departure: '', route: '', representative: '', driver: '' });
 const vehicleToneStyle = (vehicleId: string, vehicles: Vehicle[]): React.CSSProperties => {
   const index = vehicles.findIndex((vehicle) => vehicle.id === vehicleId);
   const palette = [
@@ -181,6 +199,32 @@ const readData = (): FleetData => {
     return stored ? JSON.parse(stored) as FleetData : initialData;
   } catch {
     return initialData;
+  }
+};
+
+const isRouteEntry = (value: unknown): value is RouteEntry => {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Partial<RouteEntry>;
+  return typeof entry.id === 'string'
+    && typeof entry.date === 'string'
+    && (typeof entry.vehicleId === 'string' || entry.vehicleId === null)
+    && typeof entry.vehicleName === 'string'
+    && typeof entry.plate === 'string'
+    && typeof entry.departure === 'string'
+    && typeof entry.route === 'string'
+    && typeof entry.representative === 'string'
+    && typeof entry.driver === 'string';
+};
+
+const readRouteEntries = (): RouteEntry[] => {
+  try {
+    const stored = localStorage.getItem(ROUTE_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed: unknown = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed.filter(isRouteEntry) : [];
+  } catch (error) {
+    console.error('Failed to read daily route records', error);
+    return [];
   }
 };
 
@@ -370,13 +414,14 @@ const fleetSections = [
   { key: 'overview', label: 'نظرة عامة', description: 'ملخص الأداء والحركات', Icon: LayoutDashboard },
   { key: 'vehicles', label: 'السيارات', description: 'بيانات ومصروفات المركبات', Icon: CarFront },
   { key: 'entries', label: 'سجل التعبئة', description: 'حركات الوقود المسجلة', Icon: Fuel },
+  { key: 'routes', label: 'GPS', description: 'تسجيل ومتابعة تحركات السيارات', Icon: MapPinned },
 ] as const;
 const fleetHomeActions = [
   { key: 'users', label: 'إدارة الزوار', description: 'إضافة الزوار وتحديث صلاحيات مشاهدتهم', Icon: Settings },
 ] as const;
 type CarFuelPageProps = { onLogout?: () => void; currentUser: FleetUser };
 type LedgerPeriod = 'all' | 'month' | 'custom';
-type FleetRoute = { tab: 'home' | 'overview' | 'vehicles' | 'entries' | 'users'; selectedVehicleId: string | null; entryPage?: boolean };
+type FleetRoute = { tab: 'home' | 'overview' | 'vehicles' | 'entries' | 'routes' | 'users'; selectedVehicleId: string | null; entryPage?: boolean };
 type FleetHistoryState = { fleetRoute?: FleetRoute };
 
 const dateInputValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -386,8 +431,11 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [initialEntryDraft] = useState(() => readEntryDraft(entryDraftStorageKey));
   const entryDraftSuppressedRef = useRef(false);
   const [data, setData] = useState<FleetData>(readData);
+  const [routeEntries, setRouteEntries] = useState<RouteEntry[]>(readRouteEntries);
   const [cloudLoaded, setCloudLoaded] = useState(!isFirebaseConfigured);
-  const [tab, setTab] = useState<'home' | 'overview' | 'vehicles' | 'entries' | 'users'>('home');
+  const [routesCloudLoaded, setRoutesCloudLoaded] = useState(!isFirebaseConfigured);
+  const [routesCloudAvailable, setRoutesCloudAvailable] = useState(!isFirebaseConfigured);
+  const [tab, setTab] = useState<'home' | 'overview' | 'vehicles' | 'entries' | 'routes' | 'users'>('home');
   const routeHistoryRef = useRef<FleetRoute | null>(null);
   const skipRoutePushRef = useRef(false);
   const exitConfirmedRef = useRef(false);
@@ -425,7 +473,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [isImportingAllVehicleData, setIsImportingAllVehicleData] = useState(false);
   const vehicleHistoryImportRef = useRef<HTMLInputElement>(null);
   const [isImportingVehicleHistory, setIsImportingVehicleHistory] = useState(false);
-  const [entryDialog, setEntryDialog] = useState(Boolean(initialEntryDraft));
+  const [entryDialog, setEntryDialog] = useState(false);
+  const currentEntryDialogRef = useRef(entryDialog);
+  currentEntryDialogRef.current = entryDialog;
   const [isFuelSectionExpanded, setIsFuelSectionExpanded] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [allowanceRateDraft, setAllowanceRateDraft] = useState(String(DEFAULT_ALLOWANCE_PRICE));
@@ -439,6 +489,12 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [isRateEditorOpen, setIsRateEditorOpen] = useState(false);
   const [vehicleForm, setVehicleForm] = useState({ name: '', plate: '', driver: '', openingOdometer: '', kmPerLiter: '20', distanceBaseKm: '105' });
   const [entryForm, setEntryForm] = useState<EntryForm>(() => initialEntryDraft?.form ?? createEmptyEntryForm());
+  const [routeForm, setRouteForm] = useState<RouteForm>(createEmptyRouteForm);
+  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
+  const [locatingRouteField, setLocatingRouteField] = useState<'departure' | 'route' | null>(null);
+  const [routeMapField, setRouteMapField] = useState<'departure' | 'route' | null>(null);
+  const [routeDateFilter, setRouteDateFilter] = useState(today);
+  const [isExportingRoutes, setIsExportingRoutes] = useState(false);
   const [entryPlateSearch, setEntryPlateSearch] = useState(initialEntryDraft?.entryPlateSearch ?? '');
   const [fuelAmountDraft, setFuelAmountDraft] = useState(initialEntryDraft?.fuelAmountDraft ?? '');
   const [expenseAmountDrafts, setExpenseAmountDrafts] = useState<ExpenseInputs>(() => initialEntryDraft?.expenseAmountDrafts ?? emptyExpenseInputs());
@@ -498,6 +554,20 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         return;
       }
 
+      const historyState = event.state as FleetHistoryState | null;
+      const previousRoute = historyState?.fleetRoute;
+      if (currentEntryDialogRef.current) {
+        if (previousRoute) {
+          skipRoutePushRef.current = true;
+          setTab(previousRoute.tab);
+          setSelectedVehicleId(previousRoute.selectedVehicleId);
+          setEntryDialog(previousRoute.entryPage ?? false);
+        } else {
+          setEntryDialog(false);
+        }
+        return;
+      }
+
       if (currentTabRef.current === 'home' && window.matchMedia('(max-width: 768px)').matches) {
         const shouldExit = window.confirm('هل تريد الخروج من التطبيق؟');
         if (!shouldExit) {
@@ -510,8 +580,6 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         return;
       }
 
-      const historyState = event.state as FleetHistoryState | null;
-      const previousRoute = historyState?.fleetRoute;
       if (!previousRoute) return;
 
       skipRoutePushRef.current = true;
@@ -551,6 +619,194 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     setFontSizeKey(nextFontSize);
     localStorage.setItem(`${themeStorageKey}-font`, nextFontSize);
   };
+
+  const handleRouteVehicleChange = (vehicleId: string) => {
+    if (vehicleId === 'other') {
+      setRouteForm((current) => ({ ...current, vehicleId, vehicleName: '', plate: '', driver: '' }));
+      return;
+    }
+    const vehicle = data.vehicles.find((item) => item.id === vehicleId);
+    setRouteForm((current) => vehicle
+      ? { ...current, vehicleId, vehicleName: vehicle.name, plate: vehicle.plate, driver: vehicle.driver }
+      : { ...current, vehicleId, vehicleName: '', plate: '' });
+  };
+
+  const useCurrentLocation = (field: 'departure' | 'route') => {
+    if (!navigator.geolocation) {
+      setNoticeIsError(true);
+      setNotice('هذا الجهاز أو المتصفح لا يدعم تحديد الموقع GPS');
+      return;
+    }
+    setLocatingRouteField(field);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        void reverseGeocode({ latitude: coords.latitude, longitude: coords.longitude })
+          .then((address) => {
+            setRouteForm((current) => ({ ...current, [field]: address }));
+            setNoticeIsError(false);
+            setNotice(field === 'departure' ? `تم تحديد نقطة الانطلاق: ${address}` : `تم تحديد الوجهة: ${address}`);
+          })
+          .catch((error: unknown) => {
+            console.error('Could not resolve current GPS location to an address', error);
+            setNoticeIsError(true);
+            setNotice('تم تحديد إحداثيات GPS، لكن تعذر جلب اسم العنوان. استخدم اختيار الخريطة أو اكتب المكان يدويًا.');
+          })
+          .finally(() => setLocatingRouteField(null));
+      },
+      (error) => {
+        setLocatingRouteField(null);
+        setNoticeIsError(true);
+        if (error.code === error.PERMISSION_DENIED) setNotice('لم يتم السماح بالوصول إلى GPS. فعّل إذن الموقع للمتصفح ثم أعد المحاولة.');
+        else if (error.code === error.POSITION_UNAVAILABLE) setNotice('تعذر تحديد موقع GPS الحالي. تحقق من تشغيل خدمات الموقع.');
+        else if (error.code === error.TIMEOUT) setNotice('استغرق تحديد موقع GPS وقتًا طويلًا. أعد المحاولة.');
+        else setNotice('حدث خطأ أثناء تحديد موقع GPS. أعد المحاولة.');
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
+    );
+  };
+
+  const routeMapInitialCoordinate = (field: 'departure' | 'route') => {
+    const match = routeForm[field].match(/(?:GPS:\s*)?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
+    if (!match) return undefined;
+    const latitude = Number(match[1]);
+    const longitude = Number(match[2]);
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
+    return { latitude, longitude };
+  };
+
+  const setRouteMapAddress = (field: 'departure' | 'route', address: string) => {
+    setRouteForm((current) => ({ ...current, [field]: address }));
+    setRouteMapField(null);
+    setNoticeIsError(false);
+    setNotice(field === 'departure' ? `تم تحديد نقطة الانطلاق: ${address}` : `تم تحديد الوجهة: ${address}`);
+  };
+
+  const saveRouteEntry = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canEditFleet) return;
+    const selectedVehicle = data.vehicles.find((vehicle) => vehicle.id === routeForm.vehicleId);
+    const isOtherVehicle = routeForm.vehicleId === 'other';
+    if (!routeForm.date || !routeForm.vehicleId || (!selectedVehicle && !isOtherVehicle)) {
+      setNoticeIsError(true);
+      setNotice('اختر سيارة من الأسطول أو حدد سيارة إيجار / أخرى');
+      return;
+    }
+    if (isOtherVehicle && (!routeForm.vehicleName.trim() || !routeForm.plate.trim())) {
+      setNoticeIsError(true);
+      setNotice('أدخل وصف السيارة ورقمها أو اكتب «إيجار» في خانة الرقم');
+      return;
+    }
+    if (!routeForm.departure.trim() || !routeForm.route.trim() || !routeForm.driver.trim()) {
+      setNoticeIsError(true);
+      setNotice('أدخل نقطة الانطلاق وخط السير واسم السائق');
+      return;
+    }
+    const savedRoute: RouteEntry = {
+      id: editingRouteId || `r${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      date: routeForm.date,
+      vehicleId: selectedVehicle?.id ?? null,
+      vehicleName: selectedVehicle?.name ?? routeForm.vehicleName.trim(),
+      plate: selectedVehicle?.plate ?? routeForm.plate.trim(),
+      departure: routeForm.departure.trim(),
+      route: routeForm.route.trim(),
+      representative: routeForm.representative.trim(),
+      driver: routeForm.driver.trim(),
+    };
+    setRouteEntries((current) => editingRouteId
+      ? current.map((entry) => entry.id === editingRouteId ? savedRoute : entry)
+      : [savedRoute, ...current]);
+    setRouteDateFilter(savedRoute.date);
+    setRouteForm(createEmptyRouteForm());
+    setEditingRouteId(null);
+    setNoticeIsError(false);
+    setNotice(editingRouteId ? 'تم تحديث خط السير' : 'تم تسجيل خط السير');
+  };
+
+  const editRouteEntry = (entry: RouteEntry) => {
+    if (!canEditFleet) return;
+    const registeredVehicleId = entry.vehicleId && data.vehicles.some((vehicle) => vehicle.id === entry.vehicleId)
+      ? entry.vehicleId
+      : null;
+    setRouteForm({
+      ...entry,
+      vehicleId: registeredVehicleId ?? 'other',
+    });
+    setEditingRouteId(entry.id);
+    setRouteDateFilter(entry.date);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteRouteEntry = (entry: RouteEntry) => {
+    if (!canEditFleet || !window.confirm(`هل تريد حذف خط سير السيارة ${entry.plate} بتاريخ ${formatDateArabic(entry.date)}؟`)) return;
+    setRouteEntries((current) => current.filter((item) => item.id !== entry.id));
+    if (editingRouteId === entry.id) {
+      setEditingRouteId(null);
+      setRouteForm(createEmptyRouteForm());
+    }
+    setNoticeIsError(false);
+    setNotice('تم حذف سجل خط السير');
+  };
+
+  const exportRouteEntries = async () => {
+    if (!routeEntriesForDate.length) {
+      setNoticeIsError(true);
+      setNotice('لا توجد سجلات لتصديرها في هذا التاريخ');
+      return;
+    }
+    setIsExportingRoutes(true);
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'مراقبة سيارات شركة أبو غالي';
+      workbook.subject = 'خط سير السيارات اليومي';
+      const worksheet = workbook.addWorksheet(routeDateFilter, { views: [{ rightToLeft: true, showGridLines: false, state: 'frozen', ySplit: 2 }] });
+      worksheet.columns = [
+        { width: 8 }, { width: 16 }, { width: 19 }, { width: 19 },
+        { width: 34 }, { width: 36 }, { width: 24 }, { width: 24 },
+      ];
+      worksheet.mergeCells('A1:H1');
+      worksheet.getCell('A1').value = `خط سير السيارات اليومي - ${formatDateArabic(routeDateFilter)}`;
+      worksheet.getCell('A1').font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+      worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF9A682C' } };
+      worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+      worksheet.getRow(1).height = 32;
+      const header = ['م', 'التاريخ', 'الوصف', 'رقم السيارة', 'نقطة الإنطلاق', 'خط السير', 'المندوب', 'السائق'];
+      const headerRow = worksheet.addRow(header);
+      headerRow.height = 26;
+      headerRow.eachCell((cell) => {
+        cell.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF5D4025' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      });
+      routeEntriesForDate.forEach((entry, index) => {
+        const row = worksheet.addRow([index + 1, formatDateArabic(entry.date), entry.vehicleName, entry.plate, entry.departure, entry.route, entry.representative || '—', entry.driver]);
+        row.eachCell((cell) => {
+          cell.font = { name: 'Arial', size: 11 };
+          cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+          if (index % 2 === 1) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFAF4E9' } };
+        });
+      });
+      const buffer = await workbook.xlsx.writeBuffer();
+      const url = URL.createObjectURL(new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `خط-سير-السيارات-${routeDateFilter}.xlsx`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setNoticeIsError(false);
+      setNotice('تم تصدير كشف خط السير إلى Excel');
+    } catch (error) {
+      console.error('Failed to export daily route sheet', error);
+      setNoticeIsError(true);
+      setNotice('تعذر تصدير ملف خط السير. أعد المحاولة.');
+    } finally {
+      setIsExportingRoutes(false);
+    }
+  };
+
+  const routeEntriesForDate = routeEntries
+    .filter((entry) => entry.date === routeDateFilter)
+    .sort((first, second) => first.departure.localeCompare(second.departure, 'ar'));
 
   const saveOpeningOdometer = (vehicle: Vehicle, entriesCount: number) => {
     if (!canEditFleet) return;
@@ -620,12 +876,49 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   }, [canEditFleet, cloudLoaded, data]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(routeEntries));
+    } catch (error) {
+      console.error('Failed to save daily route records locally', error);
+      setNoticeIsError(true);
+      setNotice('تعذر حفظ سجلات خط السير على هذا الجهاز');
+    }
+    if (isFirebaseConfigured && routesCloudLoaded && routesCloudAvailable && canEditFleet) {
+      void saveCloudRouteEntries(routeEntries).catch((error) => {
+        console.error('Could not save daily route records to Firestore', error);
+        setRoutesCloudAvailable(false);
+        setNoticeIsError(true);
+        setNotice('تعذر حفظ خطوط السير في السحابة. ستظل محفوظة على هذا الجهاز.');
+      });
+    }
+  }, [canEditFleet, routeEntries, routesCloudAvailable, routesCloudLoaded]);
+
+  useEffect(() => {
     if (!isFirebaseConfigured) return undefined;
     let cancelled = false;
     readCloudFleetData<FleetData>().then((cloudData) => {
       if (cancelled) return;
       if (cloudData) setData(cloudData);
       setCloudLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured) return undefined;
+    let cancelled = false;
+    readCloudRouteEntries<RouteEntry>().then((cloudRoutes) => {
+      if (cancelled) return;
+      if (cloudRoutes) setRouteEntries(cloudRoutes.filter(isRouteEntry));
+      setRoutesCloudAvailable(true);
+      setRoutesCloudLoaded(true);
+    }).catch((error) => {
+      if (cancelled) return;
+      console.error('Could not read daily route records from Firestore', error);
+      setRoutesCloudAvailable(false);
+      setRoutesCloudLoaded(true);
+      setNoticeIsError(true);
+      setNotice('تعذر الاتصال بسجل خط السير السحابي. ستظهر السجلات المحفوظة على هذا الجهاز فقط.');
     });
     return () => { cancelled = true; };
   }, []);
@@ -1915,11 +2208,11 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             setTab(key);
             if (key !== 'vehicles') setSelectedVehicleId(null);
           }}>
-            <span className="fleet-tab-icon"><Icon aria-hidden="true" strokeWidth={1.8} /></span>
+            <span className="fleet-tab-icon">{key === 'routes' ? <img className="fleet-gps-nav-icon" src="/gps-icon.png" alt="" /> : <Icon aria-hidden="true" strokeWidth={1.8} />}</span>
             <span className="fleet-tab-copy"><strong>{label}</strong></span>
           </button>
         ))}
-      </nav> : openSection ? <nav className={`fleet-section-bar${tab === 'overview' || tab === 'vehicles' || tab === 'entries' ? ` fleet-section-bar-${tab}` : ''}`} aria-label="القسم المفتوح">
+      </nav> : openSection ? <nav className={`fleet-section-bar${tab === 'overview' || tab === 'vehicles' || tab === 'entries' || tab === 'routes' ? ` fleet-section-bar-${tab}` : ''}`} aria-label="القسم المفتوح">
         <div className="fleet-section-bar-center" dir="rtl">
           <button type="button" className="fleet-section-title-button" aria-label={`العودة للرئيسية من ${openSection.label}`} onClick={() => { setTab('home'); setSelectedVehicleId(null); }}>{openSection.label}</button>
           <button type="button" className="fleet-section-back-button" aria-label="رجوع إلى الصفحة الرئيسية" onClick={() => { setTab('home'); setSelectedVehicleId(null); }}><ArrowRight aria-hidden="true" /></button>
@@ -1963,6 +2256,58 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             </div>
           </form>
         </div>}
+      </section>}
+
+      {tab === 'routes' && <section className="fleet-section route-tracking-section">
+        <div className="route-section-heading">
+          <div><span className="fleet-overline">متابعة التشغيل اليومي</span><h2>خط سير السيارات اليومي</h2><p>سجل مستقل لتحركات السيارات، على نفس ترتيب كشف Excel اليومي.</p></div>
+          <div className="route-section-count"><strong>{numberFormat.format(routeEntriesForDate.length)}</strong><span>خط سير في هذا اليوم</span></div>
+        </div>
+        {!routesCloudLoaded
+          ? <div className="route-storage-status" role="status">جاري تحميل سجلات خطوط السير...</div>
+          : (!routesCloudAvailable || !isFirebaseConfigured) && <div className="route-storage-status" role="status">{routesCloudAvailable ? 'السجلات محفوظة على هذا الجهاز فقط؛ المزامنة السحابية غير مفعلة.' : 'تعذر الاتصال بسجل خط السير السحابي؛ السجلات الحالية محفوظة على هذا الجهاز فقط.'}</div>}
+        {!canEditFleet && <div className="fleet-user-permission-note">يمكنك مشاهدة سجلات خط السير. التعديل والإضافة متاحان للمسؤول فقط.</div>}
+
+        {canEditFleet && <form className="route-entry-form" onSubmit={saveRouteEntry}>
+          <div className="route-form-heading"><span className="route-form-icon"><MapPinned aria-hidden="true" /></span><div><h3>{editingRouteId ? 'تعديل خط السير' : 'تسجيل خط سير جديد'}</h3><p>بيانات هذا القسم محفوظة بشكل مستقل عن سجل السيارات والوقود.</p></div></div>
+          <div className="route-form-grid">
+            <label><span>التاريخ <i>*</i></span><input type="date" lang="ar" dir="rtl" required value={routeForm.date} onChange={(event) => setRouteForm((current) => ({ ...current, date: event.target.value }))} /></label>
+            <label><span>رقم السيارة <i>*</i></span><select required value={routeForm.vehicleId} onChange={(event) => handleRouteVehicleChange(event.target.value)}><option value="">اختر سيارة</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} · {vehicle.name}</option>)}<option value="other">سيارة إيجار / أخرى</option></select></label>
+            {routeForm.vehicleId === 'other' && <>
+              <label><span>وصف السيارة <i>*</i></span><input required value={routeForm.vehicleName} onChange={(event) => setRouteForm((current) => ({ ...current, vehicleName: event.target.value }))} placeholder="مثال: جامبو أو ديماكس" /></label>
+              <label><span>رقم السيارة <i>*</i></span><input required value={routeForm.plate} onChange={(event) => setRouteForm((current) => ({ ...current, plate: event.target.value }))} placeholder="رقم اللوحة أو إيجار" /></label>
+            </>}
+            <label><span>نقطة الانطلاق <i>*</i></span><input required value={routeForm.departure} onChange={(event) => setRouteForm((current) => ({ ...current, departure: event.target.value }))} placeholder="اكتب المكان أو وقت التحرك" /><div className="route-location-actions"><button className="route-gps-button" type="button" onClick={() => useCurrentLocation('departure')} disabled={locatingRouteField !== null}><LocateFixed aria-hidden="true" />{locatingRouteField === 'departure' ? 'جارٍ تحديد الموقع...' : 'موقعي الحالي GPS'}</button><button className="route-gps-button" type="button" onClick={() => setRouteMapField('departure')}><MapPinned aria-hidden="true" />اختيار من الخريطة</button></div></label>
+            <label><span>خط السير / الوجهة <i>*</i></span><input required value={routeForm.route} onChange={(event) => setRouteForm((current) => ({ ...current, route: event.target.value }))} placeholder="اكتب الوجهة أو تفاصيل خط السير" /><div className="route-location-actions"><button className="route-gps-button" type="button" onClick={() => useCurrentLocation('route')} disabled={locatingRouteField !== null}><LocateFixed aria-hidden="true" />{locatingRouteField === 'route' ? 'جارٍ تحديد الموقع...' : 'موقعي الحالي GPS'}</button><button className="route-gps-button" type="button" onClick={() => setRouteMapField('route')}><MapPinned aria-hidden="true" />اختيار من الخريطة</button></div></label>
+            <label><span>المندوب</span><input value={routeForm.representative} onChange={(event) => setRouteForm((current) => ({ ...current, representative: event.target.value }))} placeholder="اسم المندوب" /></label>
+            <label><span>السائق <i>*</i></span><input required value={routeForm.driver} onChange={(event) => setRouteForm((current) => ({ ...current, driver: event.target.value }))} placeholder="اسم السائق" /></label>
+          </div>
+          <div className="route-form-actions"><button className="fleet-button fleet-button-primary" type="submit" disabled={!routesCloudLoaded}><Plus aria-hidden="true" />{editingRouteId ? 'حفظ التعديل' : 'إضافة خط السير'}</button>{editingRouteId && <button className="fleet-button fleet-button-light" type="button" onClick={() => { setEditingRouteId(null); setRouteForm(createEmptyRouteForm()); }}>إلغاء التعديل</button>}</div>
+        </form>}
+
+        <section className="route-daily-sheet" aria-label="كشف خطوط السير">
+          <div className="route-daily-toolbar">
+            <div><span className="fleet-overline">كشف اليوم</span><h3>سجل تحركات السيارات</h3></div>
+            <label className="route-date-filter"><span>تاريخ الكشف</span><input type="date" lang="ar" dir="rtl" value={routeDateFilter} onChange={(event) => setRouteDateFilter(event.target.value)} /></label>
+            <button className="fleet-button fleet-button-light route-export-button" type="button" onClick={() => void exportRouteEntries()} disabled={isExportingRoutes || routeEntriesForDate.length === 0}><Download aria-hidden="true" />{isExportingRoutes ? 'جاري تجهيز Excel...' : 'تصدير إلى Excel'}</button>
+          </div>
+          {routeEntriesForDate.length === 0 ? <div className="fleet-empty-state route-empty-state"><MapPinned aria-hidden="true" /><strong>لا توجد خطوط سير مسجلة لهذا اليوم</strong><span>اختر تاريخًا آخر أو أضف أول خط سير من النموذج أعلاه.</span></div> : <div className="fleet-table-wrap route-table-wrap">
+            <table className="fleet-table route-table">
+              <thead><tr><th>م</th><th>الوصف</th><th>رقم السيارة</th><th>نقطة الانطلاق</th><th>خط السير</th><th>المندوب</th><th>السائق</th>{canEditFleet && <th>إجراءات</th>}</tr></thead>
+              <tbody>{routeEntriesForDate.map((entry, index) => <tr key={entry.id}>
+                <td className="ledger-index">{numberFormat.format(index + 1)}</td>
+                <td><strong>{entry.vehicleName}</strong></td>
+                <td className="ledger-plate">{entry.plate}</td>
+                <td>{entry.departure}</td>
+                <td>{entry.route}</td>
+                <td>{entry.representative || '—'}</td>
+                <td>{entry.driver}</td>
+                {canEditFleet && <td><div className="route-row-actions"><button type="button" aria-label={`تعديل خط سير ${entry.plate}`} title="تعديل" onClick={() => editRouteEntry(entry)}><Pencil aria-hidden="true" /></button><button type="button" aria-label={`حذف خط سير ${entry.plate}`} title="حذف" onClick={() => deleteRouteEntry(entry)}><Trash2 aria-hidden="true" /></button></div></td>}
+              </tr>)}</tbody>
+            </table>
+          </div>}
+        </section>
+        {routeMapField && <RouteMapPicker initialCoordinate={routeMapInitialCoordinate(routeMapField)} onCancel={() => setRouteMapField(null)} onConfirm={(address) => setRouteMapAddress(routeMapField, address)} />}
       </section>}
 
       {tab === 'overview' && <>

@@ -119,8 +119,8 @@
 .fleet-subtitle { max-width: 520px; margin: 8px 0 0; color: #667971; font-size: 15px; line-height: 1.8; }
 .fleet-button { min-height: 43px; padding: 0 17px; border-radius: 6px; font-size: 13px; font-weight: 700; }
 .fleet-button-light { color: #38514c; background: white; border: 1px solid #dce3de; }
-.fleet-button-primary { color: white; background: linear-gradient(135deg, #1b8075, #176b64); box-shadow: 0 6px 14px #176b6426; }
-.fleet-button-primary:hover { background: #105a54; }
+.fleet-button-primary { color: white; background: linear-gradient(135deg, var(--teal, #1b8075), var(--accent-dark, #176b64)); box-shadow: 0 6px 14px color-mix(in srgb, var(--teal, #176b64) 18%, transparent); }
+.fleet-button-primary:hover { filter: brightness(.94); }
 .fleet-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 22px; }
 .fleet-app-home .fleet-tabs { width: min(100%, 1080px); margin: 48px auto 22px; }
 .fleet-section-bar { --section-accent: #176b64; min-height: 58px; display: flex; align-items: center; justify-content: center; padding: 9px 14px; margin: 18px 0 16px; border: 1px solid color-mix(in srgb, var(--section-accent) 35%, var(--line)); border-radius: 9px; background: color-mix(in srgb, var(--section-accent) 8%, var(--surface)); box-shadow: 0 7px 18px color-mix(in srgb, var(--section-accent) 12%, transparent); }
@@ -141,6 +141,7 @@
 .fleet-tabs-home button { min-height: 148px; }
 .fleet-tabs-home .fleet-tab-icon { width: 62px; height: 62px; }
 .fleet-tabs-home .fleet-tab-icon svg { width: 34px; height: 34px; }
+.fleet-tabs-home .fleet-tab-icon .fleet-gps-nav-icon { width: 58px; height: 58px; }
 .fleet-tabs-home .fleet-tab-copy strong { font-size: 15px; }
 .fleet-tabs-home .fleet-tab-copy small { font-size: 11px; }
 .fleet-tabs button { min-height: 126px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; padding: 14px 10px; border: 1px solid #dce5df; border-radius: 8px; color: #52635c; background: #fff; font: inherit; text-align: center; cursor: pointer; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
@@ -149,9 +150,12 @@
 .fleet-tabs button.is-active { border-color: #176b64; color: #173b38; background: #f1f8f4; box-shadow: inset 0 0 0 1px #176b64; }
 .fleet-tab-icon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 14px; color: #176b64; background: #e8f2ed; }
 .fleet-tab-icon svg { width: 30px; height: 30px; }
+.fleet-tab-icon .fleet-gps-nav-icon { width: 49px; height: 49px; display: block; object-fit: contain; border-radius: 8px; }
 .fleet-home-section-overview { --section-accent: #087f72; --section-tint: #e8f2ed; }
 .fleet-home-section-vehicles { --section-accent: #376f91; --section-tint: #e9f1f6; }
 .fleet-home-section-entries { --section-accent: #9a682c; --section-tint: #f7efdf; }
+.fleet-home-section-routes { --section-accent: #a85851; --section-tint: #faf0ef; }
+.fleet-section-bar-routes { --section-accent: #a85851; }
 .fleet-tabs button.fleet-home-section { border-color: color-mix(in srgb, var(--section-accent) 17%, var(--line)); }
 .fleet-tabs button.fleet-home-section:hover { border-color: color-mix(in srgb, var(--section-accent) 55%, var(--line)); background: color-mix(in srgb, var(--section-accent) 4%, var(--surface)); }
 .fleet-tabs button.fleet-home-section .fleet-tab-icon { color: var(--section-accent); background: var(--section-tint); }
@@ -495,7 +499,7 @@
 .fleet-entry-page { position: fixed; z-index: 20; inset: 0; display: flex; justify-content: center; overflow-y: auto; background: var(--app-background, #f4f7f5); }
 .fleet-entry-page .fleet-entry-modal { width: min(100%, 1040px); min-height: 100dvh; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
 .fleet-entry-page .entry-form-body { flex: 1; }
-.entry-form-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 20px; border-bottom: 2px solid #5ab7a2; color: #fff; background: linear-gradient(110deg, #155e75, #08786f 62%, #176b64); }
+.entry-form-header { min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 20px; border-bottom: 2px solid var(--accent-dark, #5ab7a2); color: #fff; background: linear-gradient(110deg, var(--teal, #155e75), color-mix(in srgb, var(--teal, #08786f) 72%, #2a1f1b) 62%, var(--accent-dark, #176b64)); }
 .entry-form-header span { color: #d2eee5; font-size: 11px; }
 .entry-form-header h2 { margin: 2px 0 0; color: #fff; font-size: 20px; }
 .entry-form-header button { width: 36px; height: 36px; border: 1px solid #ffffff5c; border-radius: 6px; color: #fff; background: #ffffff16; font-size: 20px; cursor: pointer; }
@@ -759,6 +763,7 @@
   .fleet-tabs-home button { min-height: 82px; }
   .fleet-tab-icon { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 11px; }
   .fleet-tab-icon svg { width: 27px; height: 27px; }
+  .fleet-tab-icon .fleet-gps-nav-icon { width: 46px; height: 46px; }
   .fleet-tab-copy { text-align: right; }
   .fleet-user-form { grid-template-columns: 1fr; padding: 11px; }
   .fleet-user-form .fleet-button { grid-column: auto; }
@@ -862,4 +867,152 @@
   .entry-form-actions > div { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; }
   .entry-form-actions > div strong { font-size: 15px; }
   .entry-cancel-button, .entry-save-button { width: 100%; min-width: 0; }
+  .fleet-entry-page { height: 100dvh; overflow: hidden; overscroll-behavior: none; }
+  .fleet-entry-page .fleet-entry-modal { width: 100%; height: 100dvh; min-height: 0; }
+  .fleet-entry-page .entry-form-header { flex: 0 0 auto; min-height: 64px; padding: 10px 14px; }
+  .fleet-entry-page .entry-form-header h2 { font-size: 18px; }
+  .fleet-entry-page .entry-form-header .entry-page-back { min-height: 40px; }
+  .fleet-entry-page .entry-form-body { flex: 1 1 auto; min-height: 0; gap: 10px; padding: 12px 10px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .fleet-entry-page .entry-form-section { padding: 12px; border-radius: 10px; }
+  .fleet-entry-page .entry-section-title { gap: 10px; padding-bottom: 10px; margin-bottom: 10px; }
+  .fleet-entry-page .entry-section-title > span { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; }
+  .fleet-entry-page .entry-section-title h3 { font-size: 14px; }
+  .fleet-entry-page .entry-section-title p { font-size: 10px; }
+  .fleet-entry-page .entry-trip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .fleet-entry-page .entry-trip-grid > .entry-field:first-child,
+  .fleet-entry-page .entry-trip-grid > .entry-field:nth-child(4) { grid-column: 1 / -1; }
+  .fleet-entry-page .entry-fuel-grid { gap: 9px; }
+  .fleet-entry-page .entry-field { padding: 9px; border-radius: 8px; font-size: 11px; }
+  .fleet-entry-page .entry-field > span,
+  .fleet-entry-page .entry-field-label { margin-bottom: 6px; line-height: 1.5; }
+  .fleet-entry-page .entry-field input,
+  .fleet-entry-page .entry-field select { height: 44px; padding: 0 10px; border-radius: 6px; font-size: 14px; }
+  .fleet-entry-page .entry-field-help { font-size: 10px; line-height: 1.5; }
+  .fleet-entry-page .entry-expense-grid { gap: 7px; }
+  .fleet-entry-page .entry-expense-toggle { min-height: 48px; padding: 7px 10px; }
+  .fleet-entry-page .entry-expense-name { font-size: 12px; }
+  .fleet-entry-page .entry-expense-total { min-height: 30px; display: inline-flex; align-items: center; }
+  .fleet-entry-page .entry-form-actions { position: relative; flex: 0 0 auto; grid-template-columns: 1fr 1.35fr; gap: 9px; min-height: 112px; padding: 9px 12px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+  .fleet-entry-page .entry-form-actions > div { min-height: 25px; }
+  .fleet-entry-page .entry-form-actions > div strong { font-size: 16px; }
+  .fleet-entry-page .entry-cancel-button,
+  .fleet-entry-page .entry-save-button { min-height: 46px; border-radius: 8px; font-size: 13px; }
+}
+
+.route-section-heading,
+.route-daily-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.route-section-heading { margin-bottom: 19px; }
+.route-section-heading h2,
+.route-daily-toolbar h3 { margin: 4px 0 0; color: var(--theme-heading, var(--ink)); }
+.route-section-heading p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.route-section-count { min-width: 140px; display: grid; justify-items: center; gap: 3px; padding: 12px 16px; border: 1px solid #ead7d4; border-radius: 10px; color: #a85851; background: #faf0ef; }
+.route-section-count strong { font-size: 23px; line-height: 1.1; }
+.route-section-count span { font-size: 11px; }
+.route-storage-status { padding: 10px 13px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: var(--surface-soft); }
+.route-entry-form,
+.route-daily-sheet { padding: 19px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.route-entry-form { margin-bottom: 19px; border-top: 3px solid #a85851; }
+.route-form-heading { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
+.route-form-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; color: #a85851; background: #faf0ef; }
+.route-form-icon svg { width: 21px; height: 21px; }
+.route-form-heading h3 { margin: 0; color: var(--ink); font-size: 16px; }
+.route-form-heading p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.route-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+.route-form-grid label,
+.route-date-filter { min-width: 0; display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.route-form-grid label > span i { color: #bf5146; font-style: normal; }
+.route-form-grid input,
+.route-form-grid select,
+.route-date-filter input { width: 100%; min-width: 0; height: 43px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--surface); font: inherit; font-size: 13px; }
+.route-form-grid input::placeholder { color: var(--muted); opacity: .72; }
+.route-location-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.route-form-grid .route-gps-button { width: 100%; min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 9px; border: 1px solid color-mix(in srgb, #a85851 28%, var(--line)); border-radius: 7px; color: #92504a; background: color-mix(in srgb, #a85851 7%, var(--surface)); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.route-form-grid .route-gps-button:hover:not(:disabled) { border-color: #a85851; background: color-mix(in srgb, #a85851 13%, var(--surface)); }
+.route-form-grid .route-gps-button:disabled { cursor: wait; opacity: .65; }
+.route-form-grid .route-gps-button svg { width: 15px; height: 15px; flex: 0 0 15px; }
+.route-form-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 15px; }
+.route-form-actions .fleet-button,
+.route-export-button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.route-form-actions svg,
+.route-export-button svg { width: 17px; height: 17px; }
+.route-daily-sheet { padding: 17px; }
+.route-daily-toolbar { flex-wrap: wrap; margin-bottom: 13px; }
+.route-date-filter { min-width: 190px; margin-inline-start: auto; }
+.route-date-filter input { height: 40px; }
+.route-export-button:disabled { cursor: not-allowed; opacity: .5; }
+.route-table-wrap { border: 1px solid var(--line); border-radius: 8px; }
+.route-table { min-width: 1050px; }
+.route-table thead th { white-space: nowrap; }
+.route-table tbody td { vertical-align: middle; }
+.route-row-actions { display: flex; justify-content: center; gap: 6px; }
+.route-row-actions button { width: 33px; height: 33px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; color: var(--theme-heading); background: var(--surface); cursor: pointer; }
+.route-row-actions button:hover { border-color: #a85851; color: #a85851; background: #faf0ef; }
+.route-row-actions button:last-child { color: #ad4c43; }
+.route-row-actions svg { width: 15px; height: 15px; }
+.route-empty-state { min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; text-align: center; }
+.route-empty-state > svg { width: 30px; height: 30px; color: #a85851; }
+.route-empty-state strong { color: var(--ink); }
+.route-empty-state span { color: var(--muted); font-size: 12px; }
+.route-map-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 20px; background: rgba(20, 24, 27, .62); }
+.route-map-dialog { width: min(900px, 100%); max-height: min(760px, 92dvh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: 0 24px 70px rgba(0, 0, 0, .28); }
+.route-map-header { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 17px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
+.route-map-header h2 { margin: 0; color: var(--ink); font-size: 17px; }
+.route-map-header p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.route-map-close { width: 36px; height: 36px; flex: 0 0 36px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: var(--surface); font: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
+.route-map-canvas { min-height: 260px; flex: 1; background: #e8e5dd; }
+.route-map-canvas .leaflet-container { width: 100%; height: 100%; min-height: 360px; direction: ltr; font-family: Arial, sans-serif; }
+.route-map-canvas .leaflet-control-attribution { direction: ltr; }
+.route-map-marker-icon { border: 0; background: transparent; }
+.route-map-marker-icon span { width: 24px; height: 24px; display: block; border: 4px solid #fff; border-radius: 50% 50% 50% 0; background: #a85851; box-shadow: 0 2px 8px #0006; transform: rotate(-45deg); }
+.route-map-footer { min-height: 65px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 15px; border-top: 1px solid var(--line); }
+.route-map-selection { min-width: 0; display: grid; gap: 4px; }
+.route-map-selection span { color: var(--muted); font-size: 12px; direction: ltr; text-align: right; }
+.route-map-selection strong { color: #ad4c43; font-size: 11px; }
+.route-map-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: 8px; }
+.route-map-footer .fleet-button { min-height: 39px; padding-inline: 13px; }
+.route-map-footer .fleet-button:disabled { cursor: not-allowed; opacity: .5; }
+.fleet-app.fleet-theme-dark .route-section-count,
+.fleet-app.fleet-theme-dark .route-form-icon { border-color: color-mix(in srgb, #a85851 45%, var(--line)); color: #e5a49c; background: color-mix(in srgb, #a85851 18%, var(--surface)); }
+.fleet-app.fleet-theme-dark .route-form-heading h3,
+.fleet-app.fleet-theme-dark .route-daily-toolbar h3 { color: var(--ink); }
+.fleet-app.fleet-theme-dark .route-form-grid input,
+.fleet-app.fleet-theme-dark .route-form-grid select,
+.fleet-app.fleet-theme-dark .route-date-filter input,
+.fleet-app.fleet-theme-dark .route-row-actions button { border-color: var(--line); color: var(--ink); background: var(--surface); }
+.fleet-app.fleet-theme-dark .route-form-grid .route-gps-button { border-color: color-mix(in srgb, #a85851 45%, var(--line)); color: #e5a49c; background: color-mix(in srgb, #a85851 16%, var(--surface)); }
+.fleet-app.fleet-theme-dark .route-empty-state strong { color: var(--ink); }
+
+@media (max-width: 760px) {
+  .route-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .route-section-heading { align-items: flex-start; }
+  .route-section-heading h2 { font-size: 18px; }
+  .route-section-heading p { max-width: 230px; font-size: 11px; }
+  .route-section-count { min-width: 95px; padding: 9px 8px; }
+  .route-section-count strong { font-size: 19px; }
+  .route-section-count span { font-size: 9px; }
+  .route-entry-form,
+  .route-daily-sheet { padding: 12px; }
+  .route-form-heading { align-items: flex-start; }
+  .route-form-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .route-form-grid input,
+  .route-form-grid select { height: 44px; }
+  .route-form-actions { display: grid; grid-template-columns: 1fr; }
+  .route-form-actions .fleet-button { width: 100%; }
+  .route-location-actions { grid-template-columns: 1fr; }
+  .route-daily-toolbar { align-items: stretch; }
+  .route-daily-toolbar > div { flex: 1 1 100%; }
+  .route-date-filter { flex: 1 1 100%; margin-inline-start: 0; }
+  .route-export-button { width: 100%; }
+  .route-table { min-width: 1050px; }
+  .route-map-backdrop { align-items: stretch; padding: 0; }
+  .route-map-dialog { width: 100%; max-height: 100dvh; border: 0; border-radius: 0; }
+  .route-map-canvas { min-height: 0; }
+  .route-map-canvas .leaflet-container { min-height: 0; }
+  .route-map-footer { align-items: stretch; flex-direction: column; }
+  .route-map-selection span { text-align: center; }
+  .route-map-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .route-map-actions .fleet-button:last-child { grid-column: 1 / -1; }
 }

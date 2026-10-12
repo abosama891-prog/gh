@@ -23,7 +23,7 @@ export default defineConfig({
     port: 3000,
     open: true,
     watch: {
-      ignored: ['**/dist/**'],
+      ignored: ['**/dist/**', '**/*.rar'],
     },
   },
   build: {
