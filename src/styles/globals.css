@@ -1,15 +1,17 @@
 :root {
-    --bg: #f8fafc;
-    --surface: #ffffff;
-    --surface-soft: #f1f5f9;
-    --ink: #0f172a;
-    --ink-soft: #334155;
-    --ink-muted: #64748b;
-    --line: #e2e8f0;
-    --accent: #059669;
-    --accent-dark: #047857;
-    --accent-soft: rgba(5, 150, 105, 0.08);
-    --heading: #064e3b;
+    --bg: #130f0d;
+    --surface: #1b1817;
+    --surface-soft: #2a231f;
+    --ink: #f5efe9;
+    --ink-soft: #e3d7ce;
+    --ink-muted: #b9a89d;
+    --line: rgba(214, 176, 106, 0.26);
+    --accent: #f25d2d;
+    --accent-dark: #d8441a;
+    --accent-soft: rgba(242, 93, 45, 0.12);
+    --gold: #d6b06a;
+    --gold-dark: #b98a43;
+    --heading: #f7f0e8;
     --font-heading: 'Tajawal', 'Cairo', sans-serif;
     --font-body: 'Cairo', sans-serif;
     --primary-color: var(--accent);
@@ -39,34 +41,34 @@
 
 [data-theme="emerald-light"] {
     color-scheme: light;
-    --bg: #f8fafc;
-    --surface: #ffffff;
-    --surface-soft: #f1f5f9;
-    --ink: #0f172a;
-    --ink-soft: #334155;
-    --ink-muted: #64748b;
-    --line: #e2e8f0;
-    --accent: #059669;
-    --accent-dark: #047857;
-    --accent-soft: rgba(5, 150, 105, 0.08);
-    --heading: #064e3b;
+    --bg: #f3eee5;
+    --surface: #fffdf8;
+    --surface-soft: #efe4d2;
+    --ink: #2d261f;
+    --ink-soft: #594b3e;
+    --ink-muted: #867562;
+    --line: #deccb0;
+    --accent: #a87335;
+    --accent-dark: #805323;
+    --accent-soft: rgba(168, 115, 53, 0.12);
+    --heading: #5d4025;
     --font-heading: 'Tajawal', 'Cairo', sans-serif;
 }
 
 [data-theme="warm-luxury"] {
     color-scheme: light;
-    --bg: #fefce8;
+    --bg: #f5f1ed;
     --surface: #ffffff;
-    --surface-soft: #fef9c3;
-    --ink: #1c1917;
-    --ink-soft: #44403c;
-    --ink-muted: #78716c;
-    --line: #e7e5e4;
-    --accent: #a16207;
-    --accent-dark: #854d0e;
-    --accent-soft: rgba(161, 98, 7, 0.1);
-    --heading: #78350f;
-    --font-heading: 'Marhey', 'Cairo', sans-serif;
+    --surface-soft: #f4e4db;
+    --ink: #24211f;
+    --ink-soft: #45403d;
+    --ink-muted: #77706b;
+    --line: #e4c7b8;
+    --accent: #f25d2d;
+    --accent-dark: #d8441a;
+    --accent-soft: rgba(242, 93, 45, 0.12);
+    --heading: #2a1f1b;
+    --font-heading: 'Tajawal', 'Cairo', sans-serif;
 }
 
 body {
@@ -105,8 +107,11 @@ a:hover {
     display: grid;
     place-items: center;
     padding: 24px;
-    background: #f2f6f3;
-    color: #263b36;
+    background:
+        radial-gradient(circle at top, rgba(214, 176, 106, 0.28), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(242, 93, 45, 0.2), transparent 24%),
+        linear-gradient(135deg, #110f0d 0%, #1c1917 40%, #151210 100%);
+    color: #f8f2ec;
     font-family: var(--font-family);
 }
 
@@ -144,8 +149,8 @@ a:hover {
 .cars-guest-cancel { flex: 1; min-height: 44px; margin-top: 20px; border: 1px solid #d6e0d9; border-radius: 5px; color: #40554b; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
 
 .cars-portal {
-    --portal-teal: #0f766e;
-    --portal-gold: #a66e2d;
+    --portal-teal: #f25d2d;
+    --portal-gold: #d6b06a;
     position: relative;
     isolation: isolate;
     min-height: 100vh;
@@ -154,7 +159,10 @@ a:hover {
     overflow: hidden;
     padding: 32px 20px;
     color: #f8faf9;
-    background: linear-gradient(132deg, #0b514f 0%, var(--portal-teal) 48%, #8b642f 100%);
+    background:
+        radial-gradient(circle at 20% 10%, rgba(242, 93, 45, 0.28), transparent 20%),
+        radial-gradient(circle at 80% 15%, rgba(214, 176, 106, 0.18), transparent 18%),
+        linear-gradient(135deg, #120f0d 0%, #1d1a18 28%, #090909 100%);
     font-family: var(--font-family);
 }
 
@@ -167,25 +175,25 @@ a:hover {
 
 .cars-portal::before {
     inset: -18%;
-    background: radial-gradient(ellipse at 50% 8%, #ffffff18, transparent 47%), radial-gradient(ellipse at 8% 90%, #062e2b55, transparent 45%);
+    background: radial-gradient(ellipse at 50% 12%, rgba(214, 176, 106, 0.18), transparent 32%), radial-gradient(ellipse at 12% 78%, rgba(242, 93, 45, 0.14), transparent 38%);
 }
 
 .cars-portal::after {
     width: min(72vw, 720px);
     aspect-ratio: 1;
-    inset-inline-start: -25vw;
-    bottom: -48vw;
-    border: 1px solid #ffffff14;
+    inset-inline-start: -28vw;
+    bottom: -44vw;
+    border: 1px solid rgba(214, 176, 106, 0.16);
     border-radius: 50%;
-    box-shadow: 0 0 0 44px #ffffff08, 0 0 0 90px #ffffff06;
+    box-shadow: 0 0 0 44px rgba(255,255,255,0.03), 0 0 0 90px rgba(255,255,255,0.015);
 }
 
 .cars-landing-panel, .cars-auth-panel {
     width: min(100%, 590px);
-    border: 1px solid #ffffff38;
-    border-radius: 24px;
-    background: #082f2cbf;
-    box-shadow: 0 26px 80px #06221f40, inset 0 1px #ffffff1a;
+    border: 1px solid rgba(214, 176, 106, 0.28);
+    border-radius: 26px;
+    background: linear-gradient(180deg, rgba(20, 18, 17, 0.9), rgba(14, 11, 10, 0.82));
+    box-shadow: 0 22px 80px rgba(0, 0, 0, 0.42), inset 0 1px rgba(255,255,255,0.06);
     backdrop-filter: blur(14px);
 }
 
@@ -196,6 +204,8 @@ a:hover {
     padding: clamp(28px, 6vw, 54px);
     text-align: center;
     animation: carsPortalAppear 500ms ease both;
+    border-color: rgba(214, 176, 106, 0.38);
+    background: linear-gradient(180deg, rgba(23, 20, 18, 0.96), rgba(12, 11, 10, 0.9));
 }
 
 .cars-landing-emblem {
@@ -204,10 +214,10 @@ a:hover {
     aspect-ratio: 1;
     place-items: center;
     margin-bottom: 20px;
-    border: 1px solid #ffffff70;
+    border: 1px solid rgba(214, 176, 106, 0.6);
     border-radius: 50%;
-    background: linear-gradient(145deg, #ffffffed, #eaf4f0);
-    box-shadow: 0 16px 48px #071f1c55, 0 0 0 12px #ffffff14;
+    background: linear-gradient(145deg, #f5efe9, #e2d2b3);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3), 0 0 0 12px rgba(214, 176, 106, 0.12);
 }
 
 .cars-landing-emblem img {
@@ -229,10 +239,12 @@ a:hover {
     color: #fff;
     font-size: clamp(25px, 5vw, 37px);
     font-weight: 800;
+    letter-spacing: 0.02em;
+    text-shadow: 0 10px 20px rgba(0,0,0,0.25);
 }
 
-.cars-landing-panel h1 span { color: #f1cf8f; }
-.cars-landing-description { margin: 10px 0 28px; color: #e0eeea; font-size: 14px; }
+.cars-landing-panel h1 span { color: #f7cf8d; }
+.cars-landing-description { margin: 10px 0 28px; color: #f3e6dc; font-size: 14px; }
 
 .cars-landing-actions {
     display: grid;
@@ -247,29 +259,31 @@ a:hover {
     align-items: center;
     gap: 12px;
     padding: 18px;
-    border: 1px solid #ffffff54;
-    border-radius: 15px;
+    border: 1px solid rgba(214, 176, 106, 0.34);
+    border-radius: 18px;
     color: #fff;
     text-align: right;
     cursor: pointer;
     transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+    box-shadow: inset 0 1px rgba(255,255,255,0.1), 0 12px 25px rgba(0,0,0,0.18);
 }
 
-.cars-portal-action:hover { transform: translateY(-4px); filter: brightness(1.08); box-shadow: 0 14px 30px #041c1a4d; }
+.cars-portal-action:hover { transform: translateY(-4px); filter: brightness(1.08); box-shadow: inset 0 1px rgba(255,255,255,0.14), 0 18px 30px rgba(0,0,0,0.25); }
 .cars-portal-action > svg:first-child { width: 27px; height: 27px; flex: 0 0 auto; }
 .cars-portal-action > svg:last-child { width: 17px; height: 17px; flex: 0 0 auto; margin-inline-start: auto; opacity: .78; }
 .cars-portal-action span { display: grid; gap: 4px; }
 .cars-portal-action strong { font-size: 15px; }
 .cars-portal-action small { color: #f0f6f3d9; font-size: 11px; }
-.cars-portal-admin-action { background: linear-gradient(135deg, #087e70, #12635e); }
-.cars-portal-guest-action { background: linear-gradient(135deg, #397b99, #245870); }
-.cars-landing-footer { margin-top: 34px; color: #ffffffa6; font-size: 11px; }
+.cars-portal-admin-action { background: linear-gradient(135deg, #f25d2d, #d8441a 58%, #8a2a12); }
+.cars-portal-guest-action { background: linear-gradient(135deg, #f7b76d, #d6702a 58%, #8f3a16); }
+.cars-landing-footer { margin-top: 34px; color: rgba(255,255,255,0.72); font-size: 11px; letter-spacing: 0.04em; }
 
 .cars-auth-panel {
     position: relative;
     width: min(100%, 440px);
     padding: 34px clamp(23px, 6vw, 42px) 38px;
-    background: #062623b8;
+    background: linear-gradient(180deg, rgba(22, 19, 17, 0.94), rgba(11, 10, 10, 0.9));
+    border-color: rgba(214,176,106,0.35);
     animation: carsPortalAppear 350ms ease both;
 }
 
@@ -307,24 +321,26 @@ a:hover {
     align-items: center;
     gap: 7px;
     padding: 8px 11px;
-    border: 1px solid #ffffff45;
+    border: 1px solid rgba(214, 176, 106, 0.28);
     border-radius: 9px;
     color: #f5f8f6;
-    background: #ffffff0d;
+    background: rgba(255,255,255,0.04);
     font: inherit;
     font-size: 12px;
     cursor: pointer;
-    transition: background 150ms ease;
+    transition: background 150ms ease, border-color 150ms ease;
 }
 
-.cars-portal-back:hover { background: #ffffff1c; }
+.cars-portal-back:hover { background: rgba(214, 176, 106, 0.08); border-color: rgba(214, 176, 106, 0.36); }
 .cars-portal-back svg { width: 16px; height: 16px; }
 .cars-auth-brand { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 15px 0 25px; color: #e8f2ef; font-size: 12px; font-weight: 700; }
-.cars-auth-brand img { width: 58px; height: 42px; border: 1px solid #ffffff55; border-radius: 12px; object-fit: cover; object-position: center 56%; box-shadow: 0 5px 15px #041d1c35; }
-.cars-auth-icon { display: grid; width: 64px; height: 64px; place-items: center; margin: 0 auto 13px; border: 1px solid #ffffff55; border-radius: 20px; background: #ffffff12; }
+.cars-brand-mark-auth { width: 46px; height: 46px; border-radius: 12px; }
+.cars-brand-copy strong { color: #fbe4bd; }
+.cars-brand-copy small { color: #f6b66d; }
+.cars-auth-icon { display: grid; width: 64px; height: 64px; place-items: center; margin: 0 auto 13px; border: 1px solid rgba(214,176,106,0.38); border-radius: 20px; background: linear-gradient(135deg, rgba(242,93,45,0.18), rgba(214,176,106,0.08)); }
 .cars-auth-icon svg { width: 30px; height: 30px; }
-.cars-auth-admin-icon { color: #f3d192; }
-.cars-auth-guest-icon { color: #92d5ed; }
+.cars-auth-admin-icon { color: #ffb776; }
+.cars-auth-guest-icon { color: #ffd296; }
 .cars-auth-panel > h1 { color: #fff; font-size: 25px; text-align: center; }
 .cars-auth-description { margin: 8px 0 23px; color: #d5e5e0; font-size: 13px; text-align: center; }
 .cars-auth-form { display: grid; gap: 9px; }
@@ -333,11 +349,11 @@ a:hover {
 .cars-auth-form input::placeholder { color: #ffffff80; }
 .cars-auth-form input:focus { border-color: #efcf91; outline: 2px solid #efcf9140; }
 .cars-auth-form .cars-login-error { color: #ffc3b9; }
-.cars-auth-submit { min-height: 48px; margin-top: 12px; border: 0; border-radius: 9px; color: white; font: inherit; font-weight: 750; cursor: pointer; transition: transform 150ms ease, filter 150ms ease; }
-.cars-auth-submit:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); }
+.cars-auth-submit { min-height: 48px; margin-top: 12px; border: 0; border-radius: 12px; color: white; font: inherit; font-weight: 750; cursor: pointer; transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease; box-shadow: 0 12px 24px rgba(242, 93, 45, 0.16); }
+.cars-auth-submit:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 16px 28px rgba(242, 93, 45, 0.22); }
 .cars-auth-submit:disabled { opacity: .65; cursor: wait; }
-.cars-auth-submit-admin { background: linear-gradient(120deg, #0f766e, #178a76); }
-.cars-auth-submit-guest { background: linear-gradient(120deg, #287b9a, #24617d); }
+.cars-auth-submit-admin { background: linear-gradient(120deg, #f25d2d, #d8441a 58%, #8a2a12); }
+.cars-auth-submit-guest { background: linear-gradient(120deg, #ef8f4d, #c94b20 58%, #8f3a16); }
 
 @keyframes carsPortalAppear {
     from { opacity: 0; transform: translateY(10px); }
@@ -389,10 +405,80 @@ a:hover {
 .cars-landing-background-rear { animation-delay: -8s !important; }
 .cars-landing-copy { position: relative; z-index: 1; width: min(510px, 58%); margin-inline-start: auto; }
 .cars-landing-brand { display: flex; align-items: center; gap: 12px; margin-bottom: clamp(28px, 5vh, 48px); color: #e5f2ee; font-size: 13px; font-weight: 750; }
+.cars-brand-mark {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 54px;
+    height: 54px;
+    flex: 0 0 auto;
+    border-radius: 16px;
+    background: linear-gradient(145deg, #f9f1ea 0%, #e8b472 40%, #d7642c 100%);
+    box-shadow: 0 12px 28px rgba(242, 93, 45, 0.28);
+    border: 1px solid rgba(255,255,255,0.3);
+}
+.cars-brand-mark::before {
+    position: absolute;
+    inset: 7px;
+    border: 2px solid rgba(17, 15, 14, 0.9);
+    border-radius: 50%;
+    content: "";
+}
+.cars-brand-ring {
+    position: relative;
+    display: block;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #1a1b1d 0%, #3d372f 100%);
+    box-shadow: 0 0 0 4px rgba(255,255,255,0.14), 0 0 0 8px rgba(17,15,14,0.12);
+}
+.cars-brand-ring::before,
+.cars-brand-ring::after {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    content: "";
+}
+.cars-brand-ring::before {
+    top: 2px;
+    width: 2px;
+    height: 8px;
+    border-radius: 999px;
+    background: #f5f1ed;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+}
+.cars-brand-ring::after {
+    bottom: 2px;
+    width: 10px;
+    height: 2px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.85);
+}
+.cars-brand-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.1;
+}
+.cars-brand-copy strong {
+    display: block;
+    color: #fdf7f3;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+}
+.cars-brand-copy small {
+    display: block;
+    color: #f6b66d;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
 .cars-landing-thumb { position: relative; display: block; width: 72px; height: 52px; flex: 0 0 auto; overflow: hidden; border-radius: 15px; background: #0d514c; box-shadow: 0 5px 15px #041d1c35; }
-.cars-landing-thumb::after { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg, #0f766e2e 0%, transparent 45%, #082d2b55 100%); content: ""; pointer-events: none; }
-.cars-landing-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 56%; opacity: .9; -webkit-mask-image: radial-gradient(ellipse at center, #000 53%, #000b 77%, transparent 100%); mask-image: radial-gradient(ellipse at center, #000 53%, #000b 77%, transparent 100%); }
-.cars-portal-eyebrow { margin-bottom: 12px; color: #f2d091; font-size: 14px; letter-spacing: .03em; }
+.cars-landing-thumb::after { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(135deg, rgba(242,93,45,0.3) 0%, transparent 45%, rgba(0,0,0,0.35) 100%); content: ""; pointer-events: none; }
+.cars-landing-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 56%; opacity: .9; -webkit-mask-image: radial-gradient(ellipse at center, #000 53%, #000b 77%, transparent 100%); mask-image: radial-gradient(ellipse at center, #000 53%, #000b 77%, transparent 100%); }.cars-portal-eyebrow { margin-bottom: 12px; color: #f2d091; font-size: 14px; letter-spacing: .03em; }
 .cars-landing-panel h1 { max-width: 540px; font-size: clamp(35px, 5.6vw, 60px); line-height: 1.17; }
 .cars-landing-panel h1 span { color: #f2d091; }
 .cars-landing-description { max-width: 470px; margin: 18px 0 30px; color: #d4e5df; font-size: clamp(14px, 1.6vw, 17px); line-height: 1.9; }

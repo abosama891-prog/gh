@@ -56,13 +56,15 @@
 .fleet-app.fleet-theme-dark .fleet-entry-fields .fleet-input-row:nth-child(4n) > span { color: var(--ink); background: var(--surface-soft); }
 .fleet-app.fleet-theme-dark .fleet-entry-fields .fleet-input-row input,
 .fleet-app.fleet-theme-dark .fleet-entry-fields .fleet-input-row select { color: var(--ink); background: var(--surface); }
-.fleet-header { height: 82px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 3px solid #a66e2d; border-radius: 0 0 10px 10px; background: #fefce8; }
+.fleet-header { height: 82px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border: 1px solid var(--line); border-top: 0; border-bottom: 2px solid var(--gold, #d6b06a); border-radius: 0 0 14px 14px; background: linear-gradient(110deg, var(--surface), var(--surface-soft)); box-shadow: 0 12px 30px rgba(0,0,0,0.16); }
 .fleet-brand { display: flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; }
 .fleet-brand-button { padding: 0; border: 0; background: transparent; text-align: right; }
 .fleet-brand-copy { display: block; min-width: 0; }
-.fleet-brand-mark { width: 54px; height: 42px; display: block; overflow: hidden; border-radius: 12px; box-shadow: 0 5px 13px #176b6430; }
+.fleet-brand-mark { width: 44px; height: 44px; display: block; flex: 0 0 44px; overflow: hidden; border: 1px solid rgba(214,176,106,0.48); border-radius: 12px; background: linear-gradient(145deg, #f25d2d, #b93617); box-shadow: 0 5px 16px rgba(242,93,45,0.28); }
 .fleet-brand-mark img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.fleet-brand strong { display: block; color: var(--ink); font-size: 18px; line-height: 1.2; font-weight: 800; white-space: nowrap; }
+.fleet-brand-copy strong { display: block; color: var(--accent, var(--teal)); font-size: 18px; line-height: 1.2; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; }
+.fleet-brand-copy small { display: block; font-size: 11px; line-height: 1.3; opacity: 0.7; letter-spacing: 1px; text-transform: uppercase; }
+.fleet-brand strong { color: var(--ink); }
 .fleet-brand strong em { color: var(--teal); font-style: normal; }
 .fleet-header-actions, .fleet-intro-actions { display: flex; align-items: center; gap: 12px; }
 .fleet-user-greeting { color: var(--teal); font-size: 13px; font-weight: 700; white-space: nowrap; }
@@ -498,7 +500,7 @@
 .entry-form-header h2 { margin: 2px 0 0; color: #fff; font-size: 20px; }
 .entry-form-header button { width: 36px; height: 36px; border: 1px solid #ffffff5c; border-radius: 6px; color: #fff; background: #ffffff16; font-size: 20px; cursor: pointer; }
 .entry-form-header .entry-page-back { width: auto; min-width: 72px; padding: 0 12px; font: inherit; font-size: 12px; font-weight: 700; }
-.fleet-app.fleet-theme-dark .entry-form-header { color: #fff; background: linear-gradient(110deg, #155e75, #08786f 62%, #176b64); }
+.fleet-app.fleet-theme-dark .entry-form-header { color: var(--ink); border-bottom-color: var(--gold, #d6b06a); background: linear-gradient(110deg, #201b18, #33241c 62%, #1b1817); }
 .fleet-app.fleet-theme-dark .entry-form-header h2 { color: #fff; }
 .fleet-app.fleet-theme-dark .entry-form-header button { border-color: #ffffff5c; color: #fff; background: #ffffff16; }
 .entry-form-body { display: grid; gap: 12px; min-height: 0; padding: 15px 18px; overflow-y: auto; overscroll-behavior: contain; }
@@ -552,6 +554,19 @@
 .entry-form-section .entry-field input,
 .entry-form-section .entry-field select { border-color: var(--field-line); color: color-mix(in srgb, var(--field-accent) 82%, #172b28); background: color-mix(in srgb, var(--field-tint) 45%, white); }
 .entry-form-section .entry-field input[readonly] { color: var(--field-accent); background: color-mix(in srgb, var(--field-tint) 68%, white); }
+.entry-form-section .entry-field:has(input[readonly]) {
+  --field-accent: #52697a;
+  --field-tint: #e8eef2;
+  --field-line: #c6d2db;
+  border-top-color: #71899b;
+  color: #52697a;
+  background: #e8eef2;
+}
+.entry-form-section .entry-field:has(input[readonly]) input[readonly] {
+  border-color: #c6d2db;
+  color: #405769;
+  background: #f5f8fa;
+}
 .entry-form-section .entry-field input:focus,
 .entry-form-section .entry-field select:focus { border-color: var(--field-accent); outline-color: color-mix(in srgb, var(--field-accent) 25%, transparent); }
 .entry-form-section .entry-field .entry-field-help { color: color-mix(in srgb, var(--field-accent) 72%, #ffffff); }
@@ -589,9 +604,9 @@
 .entry-form-section .entry-amount-add { border-color: var(--field-line); color: var(--field-accent); background: color-mix(in srgb, var(--field-tint) 60%, white); }
 .entry-form-section .entry-amount-add:hover { border-color: var(--field-accent); background: color-mix(in srgb, var(--field-tint) 25%, white); }
 .entry-form-section .entry-amount-chip { border-color: var(--field-line); color: var(--field-accent); background: color-mix(in srgb, var(--field-tint) 55%, white); }
-.entry-distance { min-height: 61px; display: flex; flex-direction: column; justify-content: center; padding: 7px 11px; border: 1px solid #b9d8ca; border-radius: 4px; color: #32664f; background: #edf6f0; }
+.entry-distance { min-height: 61px; display: flex; flex-direction: column; justify-content: center; padding: 7px 11px; border: 1px solid #c6d2db; border-radius: 4px; color: #52697a; background: #e8eef2; }
 .entry-distance > span { font-size: 10px; }
-.entry-distance strong { margin-top: 3px; color: #205c43; font-size: 17px; }
+.entry-distance strong { margin-top: 3px; color: #405769; font-size: 17px; }
 .entry-distance small { font-size: 10px; font-weight: 500; }
 .entry-expense-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
 .entry-expense-item { padding: 0 !important; overflow: hidden; }
@@ -612,6 +627,32 @@
 .entry-form-actions > div span { color: #79867f; font-size: 10px; }
 .entry-form-actions > div strong { margin-top: 2px; color: #1d5f48; font-size: 17px; }
 .entry-cancel-button { min-height: 40px; padding: 0 15px; border: 1px solid #dce4dd; border-radius: 4px; color: #50615a; background: #fff; font: inherit; font-size: 12px; cursor: pointer; }
+
+.fleet-app.fleet-theme-dark .entry-form-actions { border-color: var(--line); background: rgba(21,18,16,0.97); box-shadow: 0 -8px 24px rgba(0,0,0,0.28); }
+.fleet-app.fleet-theme-dark .entry-form-actions > div span { color: var(--ink-muted); }
+.fleet-app.fleet-theme-dark .entry-form-actions > div strong { color: #f3d49a; }
+.fleet-app.fleet-theme-dark .entry-form-section .entry-field { --field-accent: #d6b06a; --field-tint: #2b241f; --field-line: rgba(214,176,106,0.24); }
+.fleet-app.fleet-theme-dark .entry-form-section .entry-field:has(input[readonly]) { --field-accent: #b8c9d6; --field-tint: #29343d; --field-line: #465764; border-top-color: #8ca4b5; color: #b8c9d6; background: #29343d; }
+.fleet-app.fleet-theme-dark .entry-form-section .entry-field:has(input[readonly]) input[readonly] { border-color: #465764; color: #e0e9ef; background: #202a31; }
+.fleet-app.fleet-theme-dark .entry-section-title > span { border: 1px solid rgba(214,176,106,0.48); color: #1b1817; background: linear-gradient(145deg, #f3d49a, #d6b06a); }
+.fleet-app.fleet-theme-dark .entry-cancel-button { border-color: var(--line); color: var(--ink); background: var(--surface); }
+.fleet-app.fleet-theme-dark .entry-save-button { border: 1px solid rgba(214,176,106,0.42); color: #fff; background: linear-gradient(120deg, #f25d2d, #c9421e 58%, #7d2b16); box-shadow: 0 8px 20px rgba(242,93,45,0.18); }
+.fleet-app.fleet-theme-dark .entry-field { border-color: var(--line); color: var(--ink-muted); background: var(--surface-soft); }
+.fleet-app.fleet-theme-dark .entry-field input,
+.fleet-app.fleet-theme-dark .entry-field select,
+.fleet-app.fleet-theme-dark .entry-amount-entry input { border-color: var(--line); color: var(--ink); background: #151210; }
+.fleet-app.fleet-theme-dark .entry-field-help,
+.fleet-app.fleet-theme-dark .entry-currency-input small { color: var(--ink-muted); }
+.fleet-app.fleet-theme-dark .entry-form-section .entry-amount-add,
+.fleet-app.fleet-theme-dark .entry-form-section .entry-amount-chip,
+.fleet-app.fleet-theme-dark .entry-expense-total,
+.fleet-app.fleet-theme-dark .entry-expense-chevron { border-color: var(--line); color: var(--ink); background: var(--surface-soft); }
+.fleet-app.fleet-theme-dark .entry-expense-toggle { color: var(--ink); }
+.fleet-app.fleet-theme-dark .entry-expense-toggle:hover { background: rgba(214,176,106,0.08); }
+.fleet-app.fleet-theme-dark .entry-distance { border-color: #465764; color: #b8c9d6; background: #29343d; }
+.fleet-app.fleet-theme-dark .entry-distance strong,
+.fleet-app.fleet-theme-dark .entry-form-section .entry-amount-total output { color: #f3d49a; }
+.fleet-app.fleet-theme-dark .entry-distance strong { color: #e0e9ef; }
 
 .fleet-entry-page .fleet-entry-modal { width: min(100%, 960px); }
 .fleet-entry-page .entry-form-header { min-height: 62px; padding: 8px 16px; }
@@ -692,7 +733,7 @@
   .fleet-vehicle-edit { min-height: 28px; padding: 0 7px; font-size: 9px; }
   .fleet-header { height: 58px; min-width: 0; gap: 5px; padding: 0 7px; }
   .fleet-brand { min-width: 0; flex: 1 1 auto; gap: 5px; }
-  .fleet-brand-mark { width: 44px; height: 34px; flex: 0 0 44px; border-radius: 9px; }
+  .fleet-brand-mark { width: 36px; height: 36px; flex-basis: 36px; border-radius: 9px; }
   .fleet-brand strong { max-width: 112px; overflow: hidden; font-size: 11px; text-overflow: ellipsis; }
   .fleet-live { display: none; }
   .fleet-header-actions { flex: 0 0 auto; gap: 4px; }

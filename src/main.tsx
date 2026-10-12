@@ -2,6 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import CarsApp from './CarsApp';
 import './styles/globals.css';
+import { initializePwaInstall } from './services/pwaInstall';
+
+initializePwaInstall();
 
 if ('serviceWorker' in navigator) {
   let refreshing = false;

@@ -29,15 +29,6 @@ const CarsApp: React.FC = () => {
   const [guestPassword, setGuestPassword] = useState('');
 
   useEffect(() => {
-    const captureInstall = (event: Event) => {
-      event.preventDefault();
-      window.deferredInstallPrompt = event as BeforeInstallPromptEvent;
-    };
-    window.addEventListener('beforeinstallprompt', captureInstall);
-    return () => window.removeEventListener('beforeinstallprompt', captureInstall);
-  }, []);
-
-  useEffect(() => {
     if (!firebaseAuth) return undefined;
     let disposed = false;
     let unsubscribe = () => undefined;
@@ -172,8 +163,8 @@ const CarsApp: React.FC = () => {
         </div>
         <div className="cars-landing-copy">
           <div className="cars-landing-brand">
-            <span className="cars-landing-thumb"><img src="/fleet-truck-front.png" alt="" /></span>
-            <span>مراقبة سيارات شركة أبو غالي</span>
+            <span className="cars-brand-mark" aria-hidden="true"><span className="cars-brand-ring" /></span>
+            <span className="cars-brand-copy"><strong>Abu Ghali</strong><small>MURAQABAT</small></span>
           </div>
           <h1>نظام إدارة <span>السيارات</span></h1>
           <p className="cars-landing-description">متابعة سيارات الشركة وبياناته في مكان واحد.</p>
@@ -201,8 +192,8 @@ const CarsApp: React.FC = () => {
           <ArrowRight aria-hidden="true" /> رجوع
         </button>
         <div className="cars-auth-brand">
-          <img src="/fleet-truck-front.png" alt="" />
-          <span>مراقبة سيارات شركة أبو غالي</span>
+          <span className="cars-brand-mark cars-brand-mark-auth" aria-hidden="true"><span className="cars-brand-ring" /></span>
+          <span className="cars-brand-copy"><strong>Abu Ghali</strong><small>MURAQABAT</small></span>
         </div>
         {currentScreen === 'admin-login' ? <>
           <div className="cars-auth-icon cars-auth-admin-icon"><ShieldCheck aria-hidden="true" /></div>

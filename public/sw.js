@@ -1,6 +1,6 @@
 const BUILD_VERSION = '__BUILD_VERSION__';
 const CACHE_NAME = `aboghaly-cars-v6-${BUILD_VERSION}`;
-const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/car-mark.svg'];
+const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/car-mark.svg', '/icon-speedometer.svg'];
 
 self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();

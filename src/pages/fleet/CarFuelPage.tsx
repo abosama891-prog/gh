@@ -7,6 +7,7 @@ import { isFirebaseConfigured } from '../../services/firebase';
 import { readCloudFleetData, saveCloudFleetData, saveCloudFleetDataStrict } from '../../services/fleetCloudStore';
 import { firebaseAuth } from '../../services/firebase';
 import { applyUpdate } from '../../services/serviceWorker';
+import { clearDeferredPrompt, getDeferredPrompt } from '../../services/pwaInstall';
 import './car-fuel.css';
 
 type Vehicle = {
@@ -77,8 +78,6 @@ type EntryDraft = {
 };
 
 type FleetData = { vehicles: Vehicle[]; entries: FuelEntry[]; allowancePricePerLiter?: number };
-type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }> };
-
 const STORAGE_KEY = 'company-fleet-fuel-v1';
 const DEFAULT_ALLOWANCE_PRICE = 15.75;
 const themePresets = {
@@ -100,38 +99,38 @@ const themePresets = {
     fontHeading: "'Playfair Display', 'Cairo', serif",
   },
   'emerald-light': {
-    label: 'زمردي احترافي',
-    emoji: '🌿',
-    description: 'فاتح + أخضر',
-    background: '#f8fafc',
-    surface: '#ffffff',
-    soft: '#f1f5f9',
-    ink: '#0f172a',
-    inkSoft: '#334155',
-    inkMuted: '#64748b',
-    line: '#e2e8f0',
-    accent: '#059669',
-    accentDark: '#047857',
-    accentSoft: 'rgba(5,150,105,0.08)',
-    heading: '#064e3b',
+    label: 'فاخر دافئ',
+    emoji: '✨',
+    description: 'عاجي + شامبين + برونزي',
+    background: '#f3eee5',
+    surface: '#fffdf8',
+    soft: '#efe4d2',
+    ink: '#2d261f',
+    inkSoft: '#594b3e',
+    inkMuted: '#867562',
+    line: '#deccb0',
+    accent: '#a87335',
+    accentDark: '#805323',
+    accentSoft: 'rgba(168,115,53,0.12)',
+    heading: '#5d4025',
     fontHeading: "'Tajawal', 'Cairo', sans-serif",
   },
   'warm-luxury': {
-    label: 'دافئ فاخر',
-    emoji: '✨',
-    description: 'بيج + بني',
-    background: '#fefce8',
+    label: 'برتقالي احترافي',
+    emoji: '🚚',
+    description: 'برتقالي واضح + فحمي',
+    background: '#f5f1ed',
     surface: '#ffffff',
-    soft: '#fef9c3',
-    ink: '#1c1917',
-    inkSoft: '#44403c',
-    inkMuted: '#78716c',
-    line: '#e7e5e4',
-    accent: '#a16207',
-    accentDark: '#854d0e',
-    accentSoft: 'rgba(161,98,7,0.1)',
-    heading: '#78350f',
-    fontHeading: "'Marhey', 'Cairo', sans-serif",
+    soft: '#f4e4db',
+    ink: '#24211f',
+    inkSoft: '#45403d',
+    inkMuted: '#77706b',
+    line: '#e4c7b8',
+    accent: '#f25d2d',
+    accentDark: '#d8441a',
+    accentSoft: 'rgba(242,93,45,0.12)',
+    heading: '#2a1f1b',
+    fontHeading: "'Tajawal', 'Cairo', sans-serif",
   },
 } as const;
 type ThemeKey = keyof typeof themePresets;
@@ -139,7 +138,7 @@ const resolveTheme = (storedTheme: string | null): ThemeKey => {
   if (storedTheme === 'dark-premium' || storedTheme === 'emerald-light' || storedTheme === 'warm-luxury') {
     return storedTheme;
   }
-  return 'emerald-light';
+  return 'warm-luxury';
 };
 const themeOptions: ThemeKey[] = ['dark-premium', 'emerald-light', 'warm-luxury'];
 const fontSizePresets = { small: 'صغير', medium: 'متوسط', large: 'كبير' } as const;
@@ -430,7 +429,8 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [isFuelSectionExpanded, setIsFuelSectionExpanded] = useState(false);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [allowanceRateDraft, setAllowanceRateDraft] = useState(String(DEFAULT_ALLOWANCE_PRICE));
-  const [installPrompt, setInstallPrompt] = useState<InstallPrompt | null>(null);
+  const [isInstallAvailable, setIsInstallAvailable] = useState(() => Boolean(getDeferredPrompt()));
+  const [isAppInstalled, setIsAppInstalled] = useState(() => window.matchMedia('(display-mode: standalone)').matches);
   const [notice, setNotice] = useState('');
   const [noticeIsError, setNoticeIsError] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -635,12 +635,23 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   }, [data.allowancePricePerLiter]);
 
   useEffect(() => {
-    const captureInstall = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as InstallPrompt);
+    const updateInstallAvailability = () => setIsInstallAvailable(Boolean(getDeferredPrompt()));
+    const markInstalled = () => {
+      setIsAppInstalled(true);
+      setIsInstallAvailable(false);
     };
-    window.addEventListener('beforeinstallprompt', captureInstall);
-    return () => window.removeEventListener('beforeinstallprompt', captureInstall);
+    const displayMode = window.matchMedia('(display-mode: standalone)');
+    const syncDisplayMode = () => {
+      if (displayMode.matches) markInstalled();
+    };
+    window.addEventListener('pwa-install-available', updateInstallAvailability);
+    window.addEventListener('pwa-installed', markInstalled);
+    displayMode.addEventListener('change', syncDisplayMode);
+    return () => {
+      window.removeEventListener('pwa-install-available', updateInstallAvailability);
+      window.removeEventListener('pwa-installed', markInstalled);
+      displayMode.removeEventListener('change', syncDisplayMode);
+    };
   }, []);
 
   const summaries = useMemo(() => data.vehicles.map((vehicle) => {
@@ -1778,19 +1789,26 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
 
   const installApp = async () => {
     if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsAppInstalled(true);
       setNotice('التطبيق مثبت بالفعل على هذا الجهاز');
       return;
     }
-    const availablePrompt = installPrompt || window.deferredInstallPrompt;
+    const availablePrompt = getDeferredPrompt();
     if (!availablePrompt) {
       setNotice('افتح قائمة Chrome ثم اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»');
       return;
     }
-    await availablePrompt.prompt();
-    const choice = await availablePrompt.userChoice;
-    setNotice(choice.outcome === 'accepted' ? 'تم تثبيت التطبيق على جهازك' : 'تم إلغاء التثبيت');
-    delete window.deferredInstallPrompt;
-    setInstallPrompt(null);
+    try {
+      await availablePrompt.prompt();
+      const choice = await availablePrompt.userChoice;
+      setNotice(choice.outcome === 'accepted' ? 'جاري تثبيت التطبيق...' : 'تم إلغاء التثبيت');
+    } catch (error) {
+      console.error('Install prompt error', error);
+      setNotice('تعذر فتح نافذة التثبيت. أعد المحاولة.');
+    } finally {
+      clearDeferredPrompt();
+      setIsInstallAvailable(false);
+    }
   };
 
   const updateSystem = async () => {
@@ -1856,8 +1874,8 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       {!selectedSummary && <>
       <header className="fleet-header">
         <button className="fleet-brand fleet-brand-button" type="button" onClick={() => { setTab('home'); setSelectedVehicleId(null); }} aria-label="العودة للرئيسية">
-          <span className="fleet-brand-mark"><img src="/fleet-truck-front.png" alt="" /></span>
-          <span className="fleet-brand-copy"><strong>مراقبة <em>سيارات أبو غالي</em></strong></span>
+          <span className="fleet-brand-mark"><img src="/icon-speedometer.svg" alt="" /></span>
+          <span className="fleet-brand-copy"><strong>Abu Ghali</strong><small>Muraqabat</small></span>
         </button>
         <div className="fleet-header-actions">
           {currentUser.isGuest && <span className="fleet-user-greeting">مرحباً، {currentUser.guestName}</span>}
@@ -1865,7 +1883,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
           <button className="fleet-theme-button" type="button" onClick={() => setIsThemePickerOpen((open) => !open)}>ألوان التطبيق</button>
           {canManageUsers && <button className="fleet-header-icon-button fleet-header-settings" type="button" title="إدارة الزوار" aria-label="إدارة الزوار" onClick={() => setTab('users')}><Settings aria-hidden="true" /><span>إدارة الزوار</span></button>}
           <button className="fleet-header-icon-button fleet-header-update" type="button" title="تحديث النظام" aria-label="تحديث النظام" onClick={() => void updateSystem()}><RefreshCw aria-hidden="true" /><span>تحديث النظام</span></button>
-          <button className="fleet-header-icon-button fleet-header-install" type="button" title="تثبيت التطبيق" aria-label="تثبيت التطبيق" onClick={installApp}><Download aria-hidden="true" /><span>تثبيت التطبيق</span></button>
+          {(isInstallAvailable || isAppInstalled) && <button className="fleet-header-icon-button fleet-header-install" type="button" title={isAppInstalled ? 'التطبيق مثبت' : 'تثبيت التطبيق'} aria-label={isAppInstalled ? 'التطبيق مثبت' : 'تثبيت التطبيق'} onClick={installApp} disabled={isAppInstalled}><Download aria-hidden="true" /><span>{isAppInstalled ? 'مثبت' : 'تثبيت التطبيق'}</span></button>}
           {onLogout && <button className="fleet-header-icon-button fleet-header-logout" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={onLogout}><LogOut aria-hidden="true" /><span>تسجيل الخروج</span></button>}
         </div>
       </header>
