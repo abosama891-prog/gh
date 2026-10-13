@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type ExcelJS from 'exceljs';
-import { Bell, BusFront, Car, CarFront, CarTaxiFront, Check, ChevronDown, Download, Fuel, Home, LayoutDashboard, LocateFixed, LogOut, MapPinned, Pencil, Plus, RefreshCw, RotateCcw, Settings, Trash2, Truck, Upload, Wrench } from 'lucide-react';
+import { Bell, BusFront, Car, CarFront, CarTaxiFront, Check, CheckCheck, ChevronDown, Download, Fuel, Home, LayoutDashboard, LocateFixed, LogOut, MapPinned, Pencil, Plus, RefreshCw, RotateCcw, Settings, Trash2, Truck, Upload, Wrench } from 'lucide-react';
 import { addGuest, deleteGuest as deleteGuestFromCloud, setGuestActive, subscribeToFleetUsers, updateGuest } from '../../services/fleetUserStore';
 import type { FleetGuest, FleetUser } from '../../services/fleetUserStore';
 import { isFirebaseConfigured } from '../../services/firebase';
@@ -284,17 +284,6 @@ const fleetDataFingerprint = (data: FleetData) => JSON.stringify({
   allowancePricePerLiter: data.allowancePricePerLiter,
   vehicleTypeColors: normalizeVehicleTypeColors(data.vehicleTypeColors),
 });
-const summarizeFleetUpdate = (previous: FleetData, next: FleetData) => {
-  const previousVehicleIds = new Set(previous.vehicles.map(({ id }) => id));
-  const addedVehicles = next.vehicles.filter(({ id }) => !previousVehicleIds.has(id));
-  const previousEntryIds = new Set(previous.entries.map(({ id }) => id));
-  const addedEntries = next.entries.filter(({ id }) => !previousEntryIds.has(id));
-  const updates = [
-    addedVehicles.length ? `إضافة ${addedVehicles.length} سيارة` : '',
-    addedEntries.length ? `إدخال ${addedEntries.length} حركة جديدة` : '',
-  ].filter(Boolean);
-  return updates.length ? updates.join('، ') : 'تم تعديل بيانات السيارات أو الحركات';
-};
 const isFleetUpdateNotification = (notification: FleetNotification): notification is FleetUpdateNotification => notification.kind === 'fleet-update';
 
 const isRouteEntry = (value: unknown): value is RouteEntry => {
@@ -546,7 +535,6 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [data, setData] = useState<FleetData>(readData);
   const latestFleetDataRef = useRef(data);
   latestFleetDataRef.current = data;
-  const lastSyncedFleetDataRef = useRef<FleetData | null>(null);
   const lastSyncedFleetFingerprintRef = useRef<string | null>(null);
   const [routeEntries, setRouteEntries] = useState<RouteEntry[]>(readRouteEntries);
   const [cloudLoaded, setCloudLoaded] = useState(!isFirebaseConfigured);
@@ -635,6 +623,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [noticeIsError, setNoticeIsError] = useState(false);
   const [deviationNotifications, setDeviationNotifications] = useState<FleetNotification[]>([]);
   const [isDeviationNotificationPanelOpen, setIsDeviationNotificationPanelOpen] = useState(false);
+  const [isMarkingAllNotificationsRead, setIsMarkingAllNotificationsRead] = useState(false);
   const [refreshingNotificationId, setRefreshingNotificationId] = useState<string | null>(null);
   const dismissedDeviationNotificationsRef = useRef(new Set<string>());
   const pendingDeviationNavigationRef = useRef<DeviationNotification | null>(null);
@@ -1088,26 +1077,15 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     if (cloudLoaded && canEditFleet) {
       const nextFingerprint = fleetDataFingerprint(data);
       const previousFingerprint = lastSyncedFleetFingerprintRef.current;
-      const previousData = lastSyncedFleetDataRef.current;
       if (previousFingerprint === nextFingerprint) return;
-      void saveCloudFleetDataStrict(data).then(async () => {
+      void saveCloudFleetDataStrict(data).then(() => {
         lastSyncedFleetFingerprintRef.current = nextFingerprint;
-        lastSyncedFleetDataRef.current = data;
-        if (!previousData || !isFirebaseConfigured) return;
-        const notification: FleetUpdateNotification = {
-          kind: 'fleet-update',
-          id: `fleet-update-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-          title: 'تحديث جديد في بيانات',
-          summary: summarizeFleetUpdate(previousData, data),
-          createdAt: new Date().toISOString(),
-        };
-        await publishFleetUpdateNotification(notification);
       }).catch((error: unknown) => {
-        console.error('Could not save fleet data or publish its update notification', error);
+        console.error('Could not save fleet data to the cloud', error);
         setNoticeIsError(true);
         setNotice(error instanceof Error && error.message.includes('Firestore')
-          ? 'تم حفظ البيانات محليًا، لكن تعذر مزامنتها أو إرسال إشعار للمستخدمين.'
-          : 'تعذر مزامنة البيانات أو إرسال إشعار التحديث للمستخدمين.');
+          ? 'تم حفظ البيانات محليًا، لكن تعذرت مزامنتها.'
+          : 'تعذرت مزامنة البيانات.');
       });
     }
   }, [canEditFleet, cloudLoaded, data]);
@@ -1136,7 +1114,6 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     readCloudFleetData<FleetData>().then((cloudData) => {
       if (cancelled) return;
       const resolvedData = cloudData ? normalizeFleetData(cloudData) : latestFleetDataRef.current;
-      lastSyncedFleetDataRef.current = resolvedData;
       lastSyncedFleetFingerprintRef.current = fleetDataFingerprint(resolvedData);
       if (cloudData) setData(resolvedData);
       setCloudLoaded(true);
@@ -1166,7 +1143,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         notification
         && typeof notification.id === 'string'
         && (isFleetUpdateNotification(notification)
-          ? typeof notification.title === 'string' && typeof notification.summary === 'string'
+          ? notification.source === 'fuel-entry' && typeof notification.title === 'string' && typeof notification.summary === 'string'
           : typeof notification.vehicleId === 'string' && typeof notification.month === 'string' && typeof notification.deviation === 'number')
         && !dismissedDeviationNotificationsRef.current.has(notification.id)
       ));
@@ -1450,13 +1427,42 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     setDeviationNotifications((current) => current.filter(({ id }) => id !== notification.id));
   };
 
+  const markAllFleetNotificationsRead = async () => {
+    if (isMarkingAllNotificationsRead || !deviationNotifications.length) return;
+    setIsMarkingAllNotificationsRead(true);
+    try {
+      const unreadNotifications = deviationNotifications;
+      const dataUpdate = unreadNotifications.find(isFleetUpdateNotification);
+      if (dataUpdate) {
+        const cloudData = await readCloudFleetDataStrict<FleetData>();
+        if (!cloudData) throw new Error('لم يتم العثور على نسخة حديثة من البيانات في السحابة.');
+        const refreshedData = normalizeFleetData(cloudData);
+        lastSyncedFleetFingerprintRef.current = fleetDataFingerprint(refreshedData);
+        setData(refreshedData);
+      }
+
+      const dismissedIds = new Set(dismissedDeviationNotificationsRef.current);
+      unreadNotifications.forEach(({ id }) => dismissedIds.add(id));
+      localStorage.setItem(dismissedDeviationNotificationsKey, JSON.stringify([...dismissedIds]));
+      dismissedDeviationNotificationsRef.current = dismissedIds;
+      setDeviationNotifications((current) => current.filter(({ id }) => !dismissedIds.has(id)));
+      setNotice(dataUpdate ? 'تم تحديث البيانات وقراءة كل الإشعارات.' : 'تمت قراءة كل الإشعارات.');
+      setNoticeIsError(false);
+    } catch (error) {
+      console.error('Failed to mark all notifications as read', error);
+      setNotice(error instanceof Error ? `تعذر قراءة كل الإشعارات: ${error.message}` : 'تعذر قراءة كل الإشعارات. أعد المحاولة.');
+      setNoticeIsError(true);
+    } finally {
+      setIsMarkingAllNotificationsRead(false);
+    }
+  };
+
   const refreshFleetFromNotification = async (notification: FleetUpdateNotification) => {
     setRefreshingNotificationId(notification.id);
     try {
       const cloudData = await readCloudFleetDataStrict<FleetData>();
       if (!cloudData) throw new Error('لم يتم العثور على نسخة حديثة من البيانات في السحابة.');
       const refreshedData = normalizeFleetData(cloudData);
-      lastSyncedFleetDataRef.current = refreshedData;
       lastSyncedFleetFingerprintRef.current = fleetDataFingerprint(refreshedData);
       setData(refreshedData);
       dismissFleetNotification(notification);
@@ -2478,6 +2484,16 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         createdAt: new Date().toISOString(),
       } satisfies DeviationNotification
       : null;
+    const fuelEntryNotification: FleetUpdateNotification | null = !editingEntryId
+      ? {
+        kind: 'fleet-update',
+        source: 'fuel-entry',
+        id: `fuel-entry-${entry.id}`,
+        title: 'تعبئة جديدة',
+        summary: `تم تسجيل تعبئة جديدة للسيارة ${vehicle?.plate ?? ''} بتاريخ ${formatDateArabic(entry.date)}.`,
+        createdAt: new Date().toISOString(),
+      }
+      : null;
     if (!editingEntryId) {
       try {
         localStorage.removeItem(entryDraftStorageKey);
@@ -2497,17 +2513,20 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     setData(nextData);
     closeEntryPage();
     setNotice(editingEntryId ? 'تم تحديث الحركة' : 'تم حفظ سجل التعبئة وتحديث الفجوة التموينية');
-    if (newDeviationNotification) {
+    if (fuelEntryNotification) {
       if (!isFirebaseConfigured) {
         setNoticeIsError(true);
-        setNotice('تم حفظ الحركة محليًا، لكن لا يمكن إرسال إشعار الانحراف لبقية المستخدمين دون اتصال سحابي.');
+        setNotice('تم حفظ التعبئة محليًا، لكن تعذر إرسال إشعارها للمستخدمين دون اتصال سحابي.');
       } else {
         void Promise.resolve(saveCloudFleetDataStrict(nextData))
-          .then(() => publishDeviationNotification(newDeviationNotification))
+          .then(() => Promise.all([
+            publishFleetUpdateNotification(fuelEntryNotification),
+            newDeviationNotification ? publishDeviationNotification(newDeviationNotification) : Promise.resolve(),
+          ]))
           .catch((error: unknown) => {
-            console.error('Failed to publish deviation notification', error);
+            console.error('Failed to sync new fuel entry notifications', error);
             setNoticeIsError(true);
-            setNotice(`تم حفظ الحركة، لكن تعذر إرسال إشعار الانحراف للمستخدمين: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+            setNotice(`تم حفظ التعبئة، لكن تعذر إرسال إشعارها للمستخدمين: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
           });
       }
     }
@@ -2722,6 +2741,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             {isDeviationNotificationPanelOpen && <section className="fleet-notification-panel" role="dialog" aria-label="الإشعارات">
               <div className="fleet-notification-panel-heading">
                 <strong>الإشعارات</strong>
+                {deviationNotifications.length > 0 && <button className="fleet-notification-read-all" type="button" disabled={isMarkingAllNotificationsRead || refreshingNotificationId !== null} onClick={() => void markAllFleetNotificationsRead()}>
+                  <CheckCheck size={15} aria-hidden="true" />
+                  <span>{isMarkingAllNotificationsRead ? 'جارٍ القراءة...' : 'قراءة الكل'}</span>
+                </button>}
                 <span>{deviationNotifications.length ? `${deviationNotifications.length} جديد` : 'لا توجد إشعارات جديدة'}</span>
               </div>
               {deviationNotifications.length ? <div className="fleet-notification-list">
@@ -2729,7 +2752,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                   key={notification.id}
                   className={`fleet-notification-item ${isFleetUpdateNotification(notification) ? 'is-data-update' : 'is-deviation'}`}
                   type="button"
-                  disabled={refreshingNotificationId === notification.id}
+                  disabled={refreshingNotificationId === notification.id || isMarkingAllNotificationsRead}
                   onClick={() => {
                     if (isFleetUpdateNotification(notification)) {
                       void refreshFleetFromNotification(notification);

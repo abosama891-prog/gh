@@ -26,6 +26,10 @@
 .fleet-notification-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 15px; border-bottom: 1px solid var(--line); background: var(--surface-soft); }
 .fleet-notification-panel-heading strong { font-size: 14px; }
 .fleet-notification-panel-heading span { color: var(--muted); font-size: 11px; }
+.fleet-notification-read-all { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid color-mix(in srgb, var(--teal) 24%, var(--line)); border-radius: 7px; color: var(--teal); background: var(--surface); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
+.fleet-notification-read-all span { color: inherit; font-size: inherit; }
+.fleet-notification-read-all:hover:not(:disabled) { background: color-mix(in srgb, var(--teal) 8%, var(--surface)); }
+.fleet-notification-read-all:disabled { opacity: .6; cursor: wait; }
 .fleet-notification-list { max-height: min(55vh, 380px); overflow-y: auto; }
 .fleet-notification-item { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); color: inherit; background: transparent; font: inherit; text-align: right; cursor: pointer; }
 .fleet-notification-item:last-child { border-bottom: 0; }

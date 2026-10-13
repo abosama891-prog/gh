@@ -13,6 +13,7 @@ export type DeviationNotification = {
 
 export type FleetUpdateNotification = {
   kind: 'fleet-update';
+  source: 'fuel-entry';
   id: string;
   title: string;
   summary: string;
@@ -60,7 +61,8 @@ export const subscribeToDeviationNotifications = (
             return data.kind === 'fleet-update'
               ? data as FleetUpdateNotification
               : { ...data, kind: 'deviation' } as DeviationNotification;
-          });
+        })
+        .filter((notification) => notification.kind !== 'fleet-update' || notification.source === 'fuel-entry');
         if (notifications.length) callback(notifications);
       },
       (error) => {
