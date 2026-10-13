@@ -7,6 +7,8 @@ import type { FleetGuest, FleetUser } from './services/fleetUserStore';
 import { firebaseAuth, firebaseReady, isFirebaseConfigured } from './services/firebase';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
+const GUEST_SESSION_KEY = 'cars-site-guest-session';
+
 const createAdminProfile = (username: string): FleetUser => ({
   id: `admin-${username}`,
   username,
@@ -20,7 +22,7 @@ const createAdminProfile = (username: string): FleetUser => ({
 const CarsApp: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'admin-login' | 'guest-login'>('landing');
   const [authenticated, setAuthenticated] = useState(false);
-  const [authReady, setAuthReady] = useState(!firebaseAuth);
+  const [authReady, setAuthReady] = useState(false);
   const [currentUser, setCurrentUser] = useState(() => createAdminProfile(readAdmins()[0].username));
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -29,26 +31,70 @@ const CarsApp: React.FC = () => {
   const [guestPassword, setGuestPassword] = useState('');
 
   useEffect(() => {
-    if (!firebaseAuth) return undefined;
     let disposed = false;
     let unsubscribe = () => undefined;
+    const restoreGuestSession = async () => {
+      try {
+        const guestId = localStorage.getItem(GUEST_SESSION_KEY);
+        if (!guestId) {
+          setAuthenticated(false);
+          return;
+        }
+        const guests = await getCloudFleetUsers();
+        if (disposed) return;
+        const guest = guests.find((candidate) => candidate.id === guestId && candidate.active);
+        if (!guest) {
+          localStorage.removeItem(GUEST_SESSION_KEY);
+          setAuthenticated(false);
+          return;
+        }
+        setCurrentUser({
+          id: guest.id,
+          username: guest.employeeName,
+          password: '',
+          role: 'viewer',
+          active: true,
+          isGuest: true,
+          guestName: guest.employeeName,
+          createdAt: guest.createdAt,
+        });
+        setAuthenticated(true);
+      } catch (restoreError) {
+        console.error('Guest session restoration failed', restoreError);
+        if (!disposed) {
+          setError('تعذر استعادة جلسة الزائر. تحقق من الاتصال بالإنترنت ثم أعد تحميل الصفحة.');
+          setAuthenticated(false);
+        }
+      }
+    };
+
+    if (!firebaseAuth) {
+      void restoreGuestSession().finally(() => {
+        if (!disposed) setAuthReady(true);
+      });
+      return () => { disposed = true; };
+    }
+
     void firebaseReady.then(() => {
       if (disposed) return;
       unsubscribe = onAuthStateChanged(firebaseAuth, (user) => {
-        setAuthReady(true);
         if (!user?.email) {
-          setAuthenticated(false);
+          void restoreGuestSession().finally(() => {
+            if (!disposed) setAuthReady(true);
+          });
           return;
         }
         const email = user.email.toLowerCase();
         const admin = readAdmins().find((candidate) => getAdminAuthEmail(candidate.username) === email);
         if (!admin) {
           setAuthenticated(false);
+          setAuthReady(true);
           void signOut(firebaseAuth).catch((authError: unknown) => console.error('Failed to sign out an unrecognized account', authError));
           return;
         }
         setCurrentUser(createAdminProfile(admin.username));
         setAuthenticated(true);
+        setAuthReady(true);
       });
     }).catch((authError: unknown) => {
       console.error('Failed to initialize Firebase authentication', authError);
@@ -114,6 +160,13 @@ const CarsApp: React.FC = () => {
         setError('كلمة المرور غير صحيحة');
         return;
       }
+      try {
+        localStorage.setItem(GUEST_SESSION_KEY, guest.id);
+      } catch (storageError) {
+        console.error('Could not persist guest session', storageError);
+        setError('تعذر حفظ جلسة الزائر على هذا الجهاز');
+        return;
+      }
       setCurrentUser({
         id: guest.id,
         username: guest.employeeName,
@@ -136,6 +189,7 @@ const CarsApp: React.FC = () => {
 
   const logout = () => {
     setAuthenticated(false);
+    localStorage.removeItem(GUEST_SESSION_KEY);
     if (currentUser.role === 'admin' && firebaseAuth) {
       void signOut(firebaseAuth).catch((authError: unknown) => console.error('Failed to sign out', authError));
     }

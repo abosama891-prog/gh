@@ -1,7 +1,8 @@
-import { collection, doc, limit, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, setDoc } from 'firebase/firestore';
 import { firebaseReady, firestore } from './firebase';
 
 export type DeviationNotification = {
+  kind?: 'deviation';
   id: string;
   vehicleId: string;
   plate: string;
@@ -9,6 +10,16 @@ export type DeviationNotification = {
   deviation: number;
   createdAt: string;
 };
+
+export type FleetUpdateNotification = {
+  kind: 'fleet-update';
+  id: string;
+  title: string;
+  summary: string;
+  createdAt: string;
+};
+
+export type FleetNotification = DeviationNotification | FleetUpdateNotification;
 
 const notificationsCollection = firestore ? collection(firestore, 'fleet', 'deviationNotifications', 'items') : null;
 
@@ -18,8 +29,14 @@ export const publishDeviationNotification = async (notification: DeviationNotifi
   await setDoc(doc(firestore, 'fleet', 'deviationNotifications', 'items', notification.id), notification);
 };
 
+export const publishFleetUpdateNotification = async (notification: FleetUpdateNotification): Promise<void> => {
+  if (!firestore) throw new Error('Firestore is not configured');
+  await firebaseReady;
+  await setDoc(doc(firestore, 'fleet', 'deviationNotifications', 'items', notification.id), notification);
+};
+
 export const subscribeToDeviationNotifications = (
-  callback: (notifications: DeviationNotification[]) => void,
+  callback: (notifications: FleetNotification[]) => void,
   onError: (error: Error) => void,
 ): (() => void) => {
   if (!notificationsCollection) {
@@ -33,17 +50,17 @@ export const subscribeToDeviationNotifications = (
   let unsubscribe = () => {};
   void firebaseReady.then(() => {
     if (cancelled) return;
-    let initialSnapshot = true;
     unsubscribe = onSnapshot(
-      query(notificationsCollection, orderBy('createdAt', 'desc'), limit(100)),
+      query(notificationsCollection, orderBy('createdAt', 'desc')),
       (snapshot) => {
-        if (initialSnapshot) {
-          initialSnapshot = false;
-          return;
-        }
         const notifications = snapshot.docChanges()
           .filter((change) => change.type === 'added')
-          .map((change) => change.doc.data() as DeviationNotification);
+          .map((change) => {
+            const data = change.doc.data();
+            return data.kind === 'fleet-update'
+              ? data as FleetUpdateNotification
+              : { ...data, kind: 'deviation' } as DeviationNotification;
+          });
         if (notifications.length) callback(notifications);
       },
       (error) => {

@@ -18,6 +18,13 @@ export const readCloudFleetData = async <T>(): Promise<T | null> => {
   }
 };
 
+export const readCloudFleetDataStrict = async <T>(): Promise<T | null> => {
+  if (!isFirebaseConfigured || !fleetDocument) throw new Error('Firestore is not configured');
+  await firebaseReady;
+  const snapshot = await getDoc(fleetDocument);
+  return snapshot.exists() ? snapshot.data() as T : null;
+};
+
 export const saveCloudFleetDataStrict = <T extends object>(data: T): Promise<void> => {
   if (!isFirebaseConfigured || !fleetDocument) return;
   const save = fleetSaveQueue.then(async () => {
