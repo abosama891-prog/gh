@@ -63,7 +63,7 @@ export const subscribeToDeviationNotifications = (
               : { ...data, kind: 'deviation' } as DeviationNotification;
         })
         .filter((notification) => notification.kind !== 'fleet-update' || notification.source === 'fuel-entry');
-        if (notifications.length) callback(notifications);
+        callback(notifications);
       },
       (error) => {
         console.error('Failed to listen for deviation notifications', error);

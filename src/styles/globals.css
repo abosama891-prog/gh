@@ -12,8 +12,8 @@
     --gold: #d6b06a;
     --gold-dark: #b98a43;
     --heading: #f7f0e8;
-    --font-heading: 'Tajawal', 'Cairo', sans-serif;
-    --font-body: 'Cairo', sans-serif;
+    --font-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     --primary-color: var(--accent);
     --secondary-color: var(--accent-dark);
     --accent-color: var(--accent);
@@ -36,7 +36,7 @@
     --accent-dark: #f59e0b;
     --accent-soft: rgba(251, 191, 36, 0.12);
     --heading: #fbbf24;
-    --font-heading: 'Playfair Display', 'Cairo', serif;
+    --font-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 [data-theme="emerald-light"] {
@@ -52,7 +52,7 @@
     --accent-dark: #805323;
     --accent-soft: rgba(168, 115, 53, 0.12);
     --heading: #5d4025;
-    --font-heading: 'Tajawal', 'Cairo', sans-serif;
+    --font-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 [data-theme="warm-luxury"] {
@@ -68,7 +68,7 @@
     --accent-dark: #d8441a;
     --accent-soft: rgba(242, 93, 45, 0.12);
     --heading: #2a1f1b;
-    --font-heading: 'Tajawal', 'Cairo', sans-serif;
+    --font-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 body {

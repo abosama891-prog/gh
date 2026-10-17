@@ -6,7 +6,7 @@ import { initializePwaInstall } from './services/pwaInstall';
 
 initializePwaInstall();
 
-if ('serviceWorker' in navigator) {
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   let refreshing = false;
   let hasActiveController = Boolean(navigator.serviceWorker.controller);
 
@@ -43,6 +43,18 @@ if ('serviceWorker' in navigator) {
 
   if (document.readyState === 'complete') startUpdateChecks();
   else window.addEventListener('load', startUpdateChecks, { once: true });
+} else if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.getRegistrations().then((registrations) => {
+    const appRegistrations = registrations.filter((registration) => (
+      [registration.active, registration.waiting, registration.installing]
+        .some((worker) => worker?.scriptURL === new URL('/sw.js', window.location.origin).href)
+    ));
+    return Promise.all(appRegistrations.map((registration) => registration.unregister()));
+  }).then(() => caches.keys()).then((cacheNames) => Promise.all(
+    cacheNames
+      .filter((cacheName) => cacheName.startsWith('aboghaly-cars-v'))
+      .map((cacheName) => caches.delete(cacheName)),
+  )).catch((error: unknown) => console.error('Failed to clear the app service worker cache in development', error));
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root') as HTMLElement);

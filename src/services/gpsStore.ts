@@ -1,10 +1,14 @@
 import {
   addDoc,
   collection,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
+  startAfter,
+  type DocumentData,
+  type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { firebaseAuth, firebaseReady, firestore } from './firebase';
@@ -20,7 +24,22 @@ export type GpsLog = {
   note?: string;
 };
 
+export type GpsLogsPage = {
+  logs: GpsLog[];
+  cursor: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+};
+
+export type GpsLogCursor = QueryDocumentSnapshot<DocumentData>;
+
 const gpsLogsCollection = firestore ? collection(firestore, 'fleet', 'gps-logs', 'items') : null;
+const GPS_LOGS_PAGE_SIZE = 50;
+
+const toGpsLogsPage = (documents: QueryDocumentSnapshot<DocumentData>[]): GpsLogsPage => ({
+  logs: documents.map((document) => ({ ...document.data(), id: document.id }) as GpsLog),
+  cursor: documents.length ? documents[documents.length - 1] : null,
+  hasMore: documents.length === GPS_LOGS_PAGE_SIZE,
+});
 
 export const saveGpsLog = async (log: Omit<GpsLog, 'id'>): Promise<GpsLog> => {
   await firebaseReady;
@@ -40,7 +59,7 @@ export const saveGpsLog = async (log: Omit<GpsLog, 'id'>): Promise<GpsLog> => {
 };
 
 export const subscribeToGpsLogs = (
-  onLogs: (logs: GpsLog[]) => void,
+  onPage: (page: GpsLogsPage) => void,
   onError: (error: Error) => void,
 ): Unsubscribe => {
   if (!firebaseAuth?.currentUser) {
@@ -52,15 +71,32 @@ export const subscribeToGpsLogs = (
     return () => undefined;
   }
 
-  const logsQuery = query(gpsLogsCollection, orderBy('timestamp', 'desc'), limit(500));
+  const logsQuery = query(gpsLogsCollection, orderBy('timestamp', 'desc'), limit(GPS_LOGS_PAGE_SIZE));
   return onSnapshot(
     logsQuery,
-    (snapshot) => {
-      onLogs(snapshot.docs.map((document) => ({ ...document.data(), id: document.id }) as GpsLog));
-    },
+    (snapshot) => onPage(toGpsLogsPage(snapshot.docs)),
     (error) => {
       console.error('Failed to subscribe to GPS logs', error);
       onError(error);
     },
   );
+};
+
+export const loadMoreGpsLogs = async (cursor: GpsLogCursor): Promise<GpsLogsPage> => {
+  await firebaseReady;
+  if (!firebaseAuth?.currentUser) {
+    throw new Error('يجب تسجيل الدخول إلى Firebase لتحميل سجلات GPS');
+  }
+  if (!gpsLogsCollection) {
+    throw new Error('خدمة Firestore غير مهيأة لتحميل سجلات GPS');
+  }
+
+  const olderLogsQuery = query(
+    gpsLogsCollection,
+    orderBy('timestamp', 'desc'),
+    startAfter(cursor),
+    limit(GPS_LOGS_PAGE_SIZE),
+  );
+  const snapshot = await getDocs(olderLogsQuery);
+  return toGpsLogsPage(snapshot.docs);
 };

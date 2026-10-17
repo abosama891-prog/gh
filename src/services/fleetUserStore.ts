@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { firebaseReady, firestore } from './firebase';
 
 export type FleetRole = 'admin' | 'viewer';
@@ -35,13 +35,68 @@ export type FleetUser = {
 };
 
 const ADMINS_KEY = 'cars-site-admins-v1';
+const ADMIN_PASSWORD_HASHES_KEY = 'cars-site-admin-password-hashes-v1';
 const USERS_DOCUMENT = firestore ? doc(firestore, 'fleet', 'users') : null;
+const LOGIN_LOGS_COLLECTION = firestore ? collection(firestore, 'fleet', 'login-logs', 'items') : null;
 const defaultAdmins: FleetAdmin[] = [
   { username: 'admin', role: 'admin' },
   { username: 'gh', role: 'admin' },
 ];
 
 export const getAdminAuthEmail = (username: string): string => `${username.trim().toLowerCase()}@aboghaly.local`;
+
+const readAdminPasswordHashes = (): Record<string, string> => {
+  try {
+    const stored = localStorage.getItem(ADMIN_PASSWORD_HASHES_KEY);
+    if (!stored) return {};
+    const parsed = JSON.parse(stored) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter(([, value]) => typeof value === 'string')) as Record<string, string>;
+  } catch (error) {
+    console.error('Could not read stored admin password hashes', error);
+    return {};
+  }
+};
+
+const saveAdminPasswordHashes = (hashes: Record<string, string>): void => {
+  try {
+    localStorage.setItem(ADMIN_PASSWORD_HASHES_KEY, JSON.stringify(hashes));
+  } catch (error) {
+    console.error('Could not save admin password hashes', error);
+  }
+};
+
+export const saveAdminPasswordHash = (username: string, password: string): void => {
+  const normalized = username.trim().toLowerCase();
+  const hashes = readAdminPasswordHashes();
+  hashes[normalized] = bcrypt.hashSync(password, 10);
+  saveAdminPasswordHashes(hashes);
+};
+
+export const verifyAdminPassword = async (username: string, password: string): Promise<boolean> => {
+  const normalized = username.trim().toLowerCase();
+  const hashes = readAdminPasswordHashes();
+  const storedHash = hashes[normalized];
+  if (!storedHash) return false;
+  if (/^\$2[aby]\$/.test(storedHash)) return bcrypt.compare(password, storedHash);
+  return password === storedHash;
+};
+
+export const verifyGuestPassword = async (input: string, stored: string): Promise<boolean> => {
+  if (/^\$2[aby]\$/.test(stored)) return bcrypt.compare(input, stored);
+  return input === stored;
+};
+
+export const recordLoginAttempt = async (username: string, success: boolean): Promise<void> => {
+  if (!LOGIN_LOGS_COLLECTION) throw new Error('Firestore login log collection is not configured');
+  await firebaseReady;
+  await addDoc(LOGIN_LOGS_COLLECTION, {
+    timestamp: new Date().toISOString(),
+    username,
+    success,
+    userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+  });
+};
 
 const parseGuests = (users: unknown): FleetGuest[] => {
   if (!Array.isArray(users)) return [];
@@ -58,7 +113,11 @@ const parseGuests = (users: unknown): FleetGuest[] => {
     if (!employeeName) return [];
     return [{
       id: typeof user.id === 'string' ? user.id : `guest-${employeeName.toLowerCase()}`,
-      passwordHash: typeof user.passwordHash === 'string' ? user.passwordHash : '',
+      passwordHash: typeof user.passwordHash === 'string' && user.passwordHash
+        ? user.passwordHash
+        : typeof user.password === 'string'
+          ? user.password
+          : '',
       employeeName,
       role: 'viewer',
       active: typeof user.active === 'boolean' ? user.active : true,

@@ -1,13 +1,70 @@
 import React, { FormEvent, useEffect, useState } from 'react';
-import bcrypt from 'bcryptjs';
 import { ArrowRight, Eye, ShieldCheck } from 'lucide-react';
 import CarFuelPage from './pages/fleet/CarFuelPage';
-import { getAdminAuthEmail, getCloudFleetUsers, readAdmins, saveAdmins } from './services/fleetUserStore';
+import { getAdminAuthEmail, getCloudFleetUsers, readAdmins, recordLoginAttempt, saveAdminPasswordHash, saveAdmins, verifyAdminPassword, verifyGuestPassword } from './services/fleetUserStore';
 import type { FleetGuest, FleetUser } from './services/fleetUserStore';
 import { firebaseAuth, firebaseReady, isFirebaseConfigured } from './services/firebase';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 
 const GUEST_SESSION_KEY = 'cars-site-guest-session';
+const ADMIN_SESSION_KEY = 'cars-site-admin-session';
+const LOGIN_LOCK_KEY = 'cars-site-login-attempts-v1';
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_ATTEMPT_WINDOW = 5 * 60 * 1000;
+const LOGIN_LOCK_DURATION = 5 * 60 * 1000;
+
+type LoginAttemptState = { failedAt: number[]; lockUntil: number };
+
+const readLoginAttemptState = (): LoginAttemptState => {
+  try {
+    const value = JSON.parse(localStorage.getItem(LOGIN_LOCK_KEY) || '{}') as Partial<LoginAttemptState>;
+    return {
+      failedAt: Array.isArray(value.failedAt)
+        ? value.failedAt.filter((timestamp): timestamp is number => Number.isFinite(timestamp))
+        : [],
+      lockUntil: typeof value.lockUntil === 'number' && Number.isFinite(value.lockUntil) ? value.lockUntil : 0,
+    };
+  } catch (storageError) {
+    console.error('Could not read login rate limit state', storageError);
+    return { failedAt: [], lockUntil: 0 };
+  }
+};
+
+const saveLoginAttemptState = (state: LoginAttemptState): void => {
+  try {
+    localStorage.setItem(LOGIN_LOCK_KEY, JSON.stringify(state));
+  } catch (storageError) {
+    console.error('Could not save login rate limit state', storageError);
+  }
+};
+
+const getLoginLockRemainingSeconds = (): number => {
+  const remaining = readLoginAttemptState().lockUntil - Date.now();
+  return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+};
+
+const registerFailedLoginAttempt = (): number => {
+  const now = Date.now();
+  const state = readLoginAttemptState();
+  if (state.lockUntil > now) return Math.ceil((state.lockUntil - now) / 1000);
+  const failedAt = state.failedAt.filter((timestamp) => now - timestamp < LOGIN_ATTEMPT_WINDOW);
+  failedAt.push(now);
+  if (failedAt.length >= MAX_LOGIN_ATTEMPTS) {
+    const lockUntil = now + LOGIN_LOCK_DURATION;
+    saveLoginAttemptState({ failedAt: [], lockUntil });
+    return Math.ceil((lockUntil - now) / 1000);
+  }
+  saveLoginAttemptState({ failedAt, lockUntil: 0 });
+  return 0;
+};
+
+const clearLoginAttemptState = (): void => saveLoginAttemptState({ failedAt: [], lockUntil: 0 });
+
+const logLoginAttemptSafely = (username: string, success: boolean): void => {
+  void recordLoginAttempt(username, success).catch((logError: unknown) => {
+    console.warn('Could not record login attempt in Firestore', logError);
+  });
+};
 
 const createAdminProfile = (username: string): FleetUser => ({
   id: `admin-${username}`,
@@ -23,7 +80,11 @@ const CarsApp: React.FC = () => {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'admin-login' | 'guest-login'>('landing');
   const [authenticated, setAuthenticated] = useState(false);
   const [authReady, setAuthReady] = useState(false);
-  const [currentUser, setCurrentUser] = useState(() => createAdminProfile(readAdmins()[0].username));
+  const [currentUser, setCurrentUser] = useState(() => {
+    const storedAdmin = localStorage.getItem(ADMIN_SESSION_KEY);
+    const adminUsername = storedAdmin || readAdmins()[0]?.username || 'admin';
+    return createAdminProfile(adminUsername);
+  });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -33,6 +94,20 @@ const CarsApp: React.FC = () => {
   useEffect(() => {
     let disposed = false;
     let unsubscribe = () => undefined;
+    const restoreAdminSession = () => {
+      const storedAdmin = localStorage.getItem(ADMIN_SESSION_KEY);
+      if (!storedAdmin) return false;
+      const admin = readAdmins().find((candidate) => candidate.username.trim().toLowerCase() === storedAdmin.trim().toLowerCase());
+      if (!admin) {
+        localStorage.removeItem(ADMIN_SESSION_KEY);
+        return false;
+      }
+      setCurrentUser(createAdminProfile(admin.username));
+      setAuthenticated(true);
+      setAuthReady(true);
+      return true;
+    };
+
     const restoreGuestSession = async () => {
       try {
         const guestId = localStorage.getItem(GUEST_SESSION_KEY);
@@ -68,6 +143,10 @@ const CarsApp: React.FC = () => {
       }
     };
 
+    if (restoreAdminSession()) {
+      return () => { disposed = true; };
+    }
+
     if (!firebaseAuth) {
       void restoreGuestSession().finally(() => {
         if (!disposed) setAuthReady(true);
@@ -92,6 +171,7 @@ const CarsApp: React.FC = () => {
           void signOut(firebaseAuth).catch((authError: unknown) => console.error('Failed to sign out an unrecognized account', authError));
           return;
         }
+        localStorage.setItem(ADMIN_SESSION_KEY, admin.username);
         setCurrentUser(createAdminProfile(admin.username));
         setAuthenticated(true);
         setAuthReady(true);
@@ -110,31 +190,79 @@ const CarsApp: React.FC = () => {
     event.preventDefault();
     setError('');
     setLoading(true);
+    const attemptedUsername = username.trim().toLowerCase() || 'unknown';
+    let loginSucceeded = false;
     try {
+      const lockedForSeconds = getLoginLockRemainingSeconds();
+      if (lockedForSeconds > 0) {
+        setError(`تم قفل الحساب مؤقتاً. حاول بعد ${lockedForSeconds} ثانية`);
+        return;
+      }
       const normalizedUsername = username.trim().toLowerCase();
       const admins = readAdmins();
       const admin = admins.find((candidate) =>
         candidate.username.trim().toLowerCase() === normalizedUsername,
       );
       if (!admin || !password) throw new Error('بيانات غير صحيحة');
-      if (!isFirebaseConfigured || !firebaseAuth) {
-        throw new Error('تعذر الاتصال بخدمة تسجيل دخول المسؤول');
-      }
       saveAdmins(admins);
-      await firebaseReady;
-      await signInWithEmailAndPassword(firebaseAuth, getAdminAuthEmail(admin.username), password);
-      setCurrentUser(createAdminProfile(admin.username));
-      setAuthenticated(true);
+
+      const localLoginMatches = await verifyAdminPassword(admin.username, password);
+      if (localLoginMatches) {
+        localStorage.setItem(ADMIN_SESSION_KEY, admin.username);
+        clearLoginAttemptState();
+        loginSucceeded = true;
+        setCurrentUser(createAdminProfile(admin.username));
+        setAuthenticated(true);
+        if (isFirebaseConfigured && firebaseAuth) {
+          void signInWithEmailAndPassword(firebaseAuth, getAdminAuthEmail(admin.username), password)
+            .then(() => {
+              saveAdminPasswordHash(admin.username, password);
+              localStorage.setItem(ADMIN_SESSION_KEY, admin.username);
+            })
+            .catch((firebaseError: unknown) => {
+              console.warn('Background Firebase admin login failed; local session remains active.', firebaseError);
+            });
+        }
+        return;
+      }
+
+      if (!isFirebaseConfigured || !firebaseAuth) {
+        throw new Error('بيانات غير صحيحة');
+      }
+
+      void signInWithEmailAndPassword(firebaseAuth, getAdminAuthEmail(admin.username), password)
+        .then(() => {
+          saveAdminPasswordHash(admin.username, password);
+          clearLoginAttemptState();
+          localStorage.setItem(ADMIN_SESSION_KEY, admin.username);
+          setCurrentUser(createAdminProfile(admin.username));
+          setAuthenticated(true);
+          loginSucceeded = true;
+        })
+        .catch((firebaseError: unknown) => {
+          const lockedForSeconds = registerFailedLoginAttempt();
+          console.error('Admin login failed', firebaseError);
+          setError(lockedForSeconds > 0
+            ? `تم قفل الحساب مؤقتاً. حاول بعد ${lockedForSeconds} ثانية`
+            : 'بيانات غير صحيحة');
+        });
+      return;
     } catch (loginError) {
+      const lockedForSeconds = registerFailedLoginAttempt();
       if (loginError instanceof Error && loginError.message === 'بيانات غير صحيحة') {
-        setError(loginError.message);
+        setError(lockedForSeconds > 0
+          ? `تم قفل الحساب مؤقتاً. حاول بعد ${lockedForSeconds} ثانية`
+          : loginError.message);
       } else {
         console.error('Admin login failed', loginError);
-        setError(loginError instanceof Error && loginError.message.includes('Firebase')
-          ? loginError.message
-          : 'بيانات غير صحيحة');
+        setError(lockedForSeconds > 0
+          ? `تم قفل الحساب مؤقتاً. حاول بعد ${lockedForSeconds} ثانية`
+          : loginError instanceof Error && loginError.message.includes('Firebase')
+            ? loginError.message
+            : 'بيانات غير صحيحة');
       }
     } finally {
+      logLoginAttemptSafely(attemptedUsername, loginSucceeded);
       setLoading(false);
     }
   };
@@ -143,21 +271,35 @@ const CarsApp: React.FC = () => {
     event.preventDefault();
     setError('');
     setLoading(true);
+    let attemptedUsername = 'guest';
+    let loginSucceeded = false;
     try {
+      const lockedForSeconds = getLoginLockRemainingSeconds();
+      if (lockedForSeconds > 0) {
+        setError(`تم قفل الحساب مؤقتاً. حاول بعد ${lockedForSeconds} ثانية`);
+        return;
+      }
       if (!guestPassword.trim()) {
-        setError('ادخل كلمة المرور');
+        const failedAttemptsLockSeconds = registerFailedLoginAttempt();
+        setError(failedAttemptsLockSeconds > 0
+          ? `تم قفل الحساب مؤقتاً. حاول بعد ${failedAttemptsLockSeconds} ثانية`
+          : 'ادخل كلمة المرور');
         return;
       }
       const guests = await getCloudFleetUsers();
       let guest: FleetGuest | undefined;
       for (const candidate of guests) {
-        if (candidate.active && candidate.passwordHash && await bcrypt.compare(guestPassword, candidate.passwordHash)) {
+        if (candidate.active && candidate.passwordHash && await verifyGuestPassword(guestPassword, candidate.passwordHash)) {
           guest = candidate;
+          attemptedUsername = candidate.employeeName;
           break;
         }
       }
       if (!guest) {
-        setError('كلمة المرور غير صحيحة');
+        const failedAttemptsLockSeconds = registerFailedLoginAttempt();
+        setError(failedAttemptsLockSeconds > 0
+          ? `تم قفل الحساب مؤقتاً. حاول بعد ${failedAttemptsLockSeconds} ثانية`
+          : 'كلمة المرور غير صحيحة');
         return;
       }
       try {
@@ -178,11 +320,14 @@ const CarsApp: React.FC = () => {
         createdAt: guest.createdAt,
       });
       setAuthenticated(true);
+      loginSucceeded = true;
+      clearLoginAttemptState();
       setGuestPassword('');
     } catch (guestLoginError) {
       console.error('Guest login failed', guestLoginError);
       setError('تعذر الاتصال بقائمة الزوار. حاول مرة أخرى');
     } finally {
+      logLoginAttemptSafely(attemptedUsername, loginSucceeded);
       setLoading(false);
     }
   };
@@ -190,6 +335,7 @@ const CarsApp: React.FC = () => {
   const logout = () => {
     setAuthenticated(false);
     localStorage.removeItem(GUEST_SESSION_KEY);
+    localStorage.removeItem(ADMIN_SESSION_KEY);
     if (currentUser.role === 'admin' && firebaseAuth) {
       void signOut(firebaseAuth).catch((authError: unknown) => console.error('Failed to sign out', authError));
     }
