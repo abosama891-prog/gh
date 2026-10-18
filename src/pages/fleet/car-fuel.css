@@ -710,19 +710,26 @@
 .deviation-summary-filter select { width: 100%; min-width: 0; min-height: 34px; padding: 0 8px; border: 1px solid #ffffff70; border-radius: 5px; color: #fff; background: #ffffff18; font: inherit; font-size: calc(10px * var(--fleet-font-scale, 1)); }
 .deviation-summary-filter select option { color: #263a34; background: #fff; }
 .deviation-summary-table-wrap { max-width: 100%; overflow-x: auto; }
-.deviation-summary-table { min-width: 560px; table-layout: fixed; }
-.deviation-summary-table th:nth-child(1), .deviation-summary-table td:nth-child(1) { width: 40%; }
-.deviation-summary-table th:nth-child(2), .deviation-summary-table td:nth-child(2) { width: 25%; }
-.deviation-summary-table th:nth-child(3), .deviation-summary-table td:nth-child(3) { width: 35%; }
-.deviation-summary-table.has-notes { min-width: 760px; }
+.deviation-summary-table { min-width: 460px; table-layout: fixed; }
+.deviation-summary-table th:nth-child(1), .deviation-summary-table td:nth-child(1) { width: 34%; }
+.deviation-summary-table th:nth-child(2), .deviation-summary-table td:nth-child(2) { width: 14%; }
+.deviation-summary-table th:nth-child(3), .deviation-summary-table td:nth-child(3) { width: 52%; }
+.deviation-summary-table.has-notes { min-width: 620px; }
 .deviation-summary-table.has-notes th:nth-child(1), .deviation-summary-table.has-notes td:nth-child(1) { width: 25%; }
-.deviation-summary-table.has-notes th:nth-child(2), .deviation-summary-table.has-notes td:nth-child(2) { width: 18%; }
+.deviation-summary-table.has-notes th:nth-child(2), .deviation-summary-table.has-notes td:nth-child(2) { width: 12%; }
 .deviation-summary-table.has-notes th:nth-child(3), .deviation-summary-table.has-notes td:nth-child(3) { width: 22%; }
-.deviation-summary-table.has-notes th:nth-child(4), .deviation-summary-table.has-notes td:nth-child(4) { width: 35%; }
+.deviation-summary-table.has-notes th:nth-child(4), .deviation-summary-table.has-notes td:nth-child(4) { width: 41%; }
+.deviation-summary-table th:nth-child(-n+3) { padding-right: 4px; padding-left: 4px; white-space: normal; overflow-wrap: anywhere; }
+.deviation-summary-table tbody td:nth-child(2) { white-space: nowrap; }
 .deviation-summary-table thead th { color: #76352e; background: #fae8e5; }
 .deviation-summary-table tbody td { font-size: calc(13px * var(--fleet-font-scale, 1)); font-weight: 700; font-variant-numeric: tabular-nums; }
 .deviation-summary-table td.deviation-summary-amount { color: #b42318 !important; background: #fff0ed; font-size: calc(14px * var(--fleet-font-scale, 1)); font-weight: 800; }
 .deviation-summary-table tfoot th { color: #762e26; background: #f6ddd8; font-size: calc(12px * var(--fleet-font-scale, 1)); font-weight: 800; }
+.deviation-visibility-control { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.deviation-hidden-label { color: var(--ink-muted); font-size: calc(9px * var(--fleet-font-scale, 1)); font-weight: 600; }
+.deviation-visibility-toggle { min-height: 23px; padding: 1px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--accent); background: var(--surface); font: inherit; font-size: calc(10px * var(--fleet-font-scale, 1)); font-weight: 700; cursor: pointer; }
+.deviation-visibility-toggle:hover, .deviation-visibility-toggle:focus-visible { border-color: var(--accent); outline-color: var(--accent); }
+.deviation-summary-table tr.is-hidden-from-users td { opacity: .72; }
 .deviation-note-cell { white-space: normal; vertical-align: middle; }
 .deviation-note-content { display: grid; width: 100%; gap: 5px; }
 .deviation-month-note { display: grid; gap: 3px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }
@@ -1208,8 +1215,8 @@
   .deviation-summary-vehicle-filter > span { white-space: nowrap; }
   .deviation-summary-filter select { width: 100%; min-width: 0; min-height: 33px; padding: 0 8px; }
   .deviation-summary-table-wrap { border: 1px solid var(--line); border-radius: 6px; overscroll-behavior-inline: contain; }
-  .deviation-summary-table { min-width: 480px; }
-  .deviation-summary-table.has-notes { min-width: 700px; }
+  .deviation-summary-table { min-width: 420px; }
+  .deviation-summary-table.has-notes { min-width: 580px; }
   .deviation-summary-table th, .deviation-summary-table td { padding: 8px 6px; font-size: calc(10px * var(--fleet-font-scale, 1)); }
   .deviation-summary-table tbody td.deviation-summary-amount { font-size: calc(12px * var(--fleet-font-scale, 1)); }
   .deviation-summary-table tfoot th { white-space: normal; }

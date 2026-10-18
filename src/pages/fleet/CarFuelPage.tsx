@@ -164,7 +164,7 @@ const readDetailColumnVisibility = (storageKey: string): Record<string, Partial<
   }
 };
 
-type FleetData = { vehicles: Vehicle[]; entries: FuelEntry[]; allowancePricePerLiter?: number; vehicleTypeColors?: VehicleTypeColors };
+type FleetData = { vehicles: Vehicle[]; entries: FuelEntry[]; allowancePricePerLiter?: number; vehicleTypeColors?: VehicleTypeColors; hiddenDeviationVehicleIds?: string[] };
 const STORAGE_KEY = 'company-fleet-fuel-v1';
 const ROUTE_STORAGE_KEY = 'company-fleet-routes-v1';
 const DEFAULT_ALLOWANCE_PRICE = 15.75;
@@ -278,7 +278,13 @@ const readData = (): FleetData => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return initialData;
     const parsed = JSON.parse(stored) as FleetData;
-    return { ...parsed, vehicleTypeColors: normalizeVehicleTypeColors(parsed.vehicleTypeColors) };
+    return {
+      ...parsed,
+      vehicleTypeColors: normalizeVehicleTypeColors(parsed.vehicleTypeColors),
+      hiddenDeviationVehicleIds: Array.isArray(parsed.hiddenDeviationVehicleIds)
+        ? [...new Set(parsed.hiddenDeviationVehicleIds.filter((id): id is string => typeof id === 'string'))]
+        : [],
+    };
   } catch {
     return initialData;
   }
@@ -287,12 +293,16 @@ const readData = (): FleetData => {
 const normalizeFleetData = (data: FleetData): FleetData => migrateLegacyFuelEntries({
   ...data,
   vehicleTypeColors: normalizeVehicleTypeColors(data.vehicleTypeColors),
+  hiddenDeviationVehicleIds: Array.isArray(data.hiddenDeviationVehicleIds)
+    ? [...new Set(data.hiddenDeviationVehicleIds.filter((id): id is string => typeof id === 'string'))]
+    : [],
 });
 const fleetDataFingerprint = (data: FleetData) => JSON.stringify({
   vehicles: data.vehicles,
   entries: data.entries,
   allowancePricePerLiter: data.allowancePricePerLiter,
   vehicleTypeColors: normalizeVehicleTypeColors(data.vehicleTypeColors),
+  hiddenDeviationVehicleIds: data.hiddenDeviationVehicleIds || [],
 });
 const isFleetUpdateNotification = (notification: FleetNotification): notification is FleetUpdateNotification => notification.kind === 'fleet-update';
 const normalizeVehicleSearchText = (value: string) => value
@@ -2008,7 +2018,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     const deviation = entries.reduce((total, entry) => total + entryDeviation(entry, fuelAllowanceRate(data), litersForEntry(entry, vehicle)), 0);
     return { vehicle, entries, deviation };
   }).filter((summary) => summary.deviation > 250), [data, selectedDeviationMonths]);
-  const visibleDeviationSummaries = deviationSummaries.filter((summary) => deviationSummaryVehicleId === 'all' || summary.vehicle.id === deviationSummaryVehicleId);
+  const hiddenDeviationVehicleIds = new Set(data.hiddenDeviationVehicleIds || []);
+  const displayedDeviationSummaries = deviationSummaries.filter((summary) => canEditFleet || !hiddenDeviationVehicleIds.has(summary.vehicle.id));
+  const visibleDeviationSummaries = displayedDeviationSummaries.filter((summary) => deviationSummaryVehicleId === 'all' || summary.vehicle.id === deviationSummaryVehicleId);
   const visibleDeviationTotal = visibleDeviationSummaries.reduce((total, summary) => total + summary.deviation, 0);
   const availableDeviationMonths = [...new Set(data.entries.map((entry) => entry.date.slice(0, 7)).filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort((left, right) => right.localeCompare(left));
   const deviationMonthLabel = selectedDeviationMonths.length === 0
@@ -3273,6 +3285,19 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     setEditingDeviationNote({ vehicleId, month });
   };
 
+  const toggleDeviationVehicleVisibility = (vehicleId: string) => {
+    if (!canEditFleet) return;
+    const isHidden = (latestFleetDataRef.current.hiddenDeviationVehicleIds || []).includes(vehicleId);
+    setData((current) => {
+      const hiddenVehicleIds = new Set(current.hiddenDeviationVehicleIds || []);
+      if (hiddenVehicleIds.has(vehicleId)) hiddenVehicleIds.delete(vehicleId);
+      else hiddenVehicleIds.add(vehicleId);
+      return { ...current, hiddenDeviationVehicleIds: [...hiddenVehicleIds] };
+    });
+    setNotice(isHidden ? 'تم إظهار انحراف السيارة للمستخدمين' : 'تم إخفاء انحراف السيارة عن المستخدمين');
+    setNoticeIsError(false);
+  };
+
   const saveDeviationNote = () => {
     if (!editingDeviationNote || !canEditFleet) return;
     const { vehicleId, month } = editingDeviationNote;
@@ -4218,7 +4243,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             </div>
             <div className="monthly-summary-controls deviation-summary-controls">
               <div className="deviation-summary-period-controls">
-                <span className="ledger-period deviation-summary-count">{numberFormat.format(deviationSummaries.length)} سيارة</span>
+                <span className="ledger-period deviation-summary-count">{numberFormat.format(displayedDeviationSummaries.length)} سيارة</span>
               {!isDeviationSummaryCollapsed && <div className="deviation-month-picker deviation-month-multiselect">
                 <button
                   type="button"
@@ -4281,7 +4306,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
               {!isDeviationSummaryCollapsed && <label className="deviation-summary-filter deviation-summary-vehicle-filter"><span>السيارة</span>
                 <select value={deviationSummaryVehicleId} onChange={(event) => setDeviationSummaryVehicleId(event.target.value)} aria-label="تصفية ملخص الانحرافات حسب السيارة">
                   <option value="all">كل السيارات المتجاوزة</option>
-                  {deviationSummaries.map(({ vehicle }) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate}</option>)}
+                  {displayedDeviationSummaries.map(({ vehicle }) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate}</option>)}
                 </select>
               </label>}
             </div>
@@ -4295,8 +4320,15 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                     const note = deviationNotes[month]?.[summary.vehicle.id];
                     return note ? [{ month, note }] : [];
                   });
-                  return <tr key={summary.vehicle.id} className="fleet-vehicle-tone" style={vehicleToneStyle(summary.vehicle.id, data.vehicles, normalizeVehicleTypeColors(data.vehicleTypeColors))}>
-                    <td className="ledger-plate"><button type="button" className="ledger-vehicle-link" onClick={() => { setSelectedVehicleId(summary.vehicle.id); setTab('vehicles'); }}>{summary.vehicle.plate}</button></td>
+                  const isHiddenFromUsers = hiddenDeviationVehicleIds.has(summary.vehicle.id);
+                  return <tr key={summary.vehicle.id} className={`fleet-vehicle-tone${isHiddenFromUsers ? ' is-hidden-from-users' : ''}`} style={vehicleToneStyle(summary.vehicle.id, data.vehicles, normalizeVehicleTypeColors(data.vehicleTypeColors))}>
+                    <td className="ledger-plate">
+                      <button type="button" className="ledger-vehicle-link" onClick={() => { setSelectedVehicleId(summary.vehicle.id); setTab('vehicles'); }}>{summary.vehicle.plate}</button>
+                      {canEditFleet && <div className="deviation-visibility-control">
+                        {isHiddenFromUsers && <span className="deviation-hidden-label">مخفي للمستخدمين</span>}
+                        <button type="button" className="deviation-visibility-toggle" aria-label={`${isHiddenFromUsers ? 'إظهار' : 'إخفاء'} انحراف السيارة ${summary.vehicle.plate} ${isHiddenFromUsers ? 'للمستخدمين' : 'عن المستخدمين'}`} onClick={() => toggleDeviationVehicleVisibility(summary.vehicle.id)}>{isHiddenFromUsers ? 'إظهار' : 'إخفاء'}</button>
+                      </div>}
+                    </td>
                     <td>{numberFormat.format(summary.entries.length)}</td>
                     <td className="ledger-warning deviation-summary-amount">{currencyFormat.format(Math.round(summary.deviation))}</td>
                     {selectedDeviationMonths.length > 0 && <td className="deviation-note-cell">
@@ -4315,7 +4347,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                 })}</tbody>
                 <tfoot><tr><th colSpan={2}>إجمالي الانحراف للسيارات المعروضة</th><th className="ledger-warning">{currencyFormat.format(Math.round(visibleDeviationTotal))}</th>{selectedDeviationMonths.length > 0 && <th />}</tr></tfoot>
               </table>
-            </div> : <p className="fleet-empty-state">{deviationSummaries.length === 0 ? 'لا توجد سيارات تجاوز انحرافها الإجمالي 250 في هذا الشهر.' : 'لا توجد نتائج للسيارة المحددة.'}</p>}
+            </div> : <p className="fleet-empty-state">{deviationSummaries.length === 0 ? 'لا توجد سيارات تجاوز انحرافها الإجمالي 250 في هذا الشهر.' : displayedDeviationSummaries.length === 0 ? 'لا توجد انحرافات ظاهرة للمستخدمين في هذه الفترة.' : 'لا توجد نتائج للسيارة المحددة.'}</p>}
           </div>}
         </section>
       </>}
