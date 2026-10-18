@@ -41,33 +41,33 @@
 
 [data-theme="emerald-light"] {
     color-scheme: light;
-    --bg: #f3eee5;
-    --surface: #fffdf8;
-    --surface-soft: #efe4d2;
-    --ink: #2d261f;
-    --ink-soft: #594b3e;
-    --ink-muted: #867562;
-    --line: #deccb0;
-    --accent: #a87335;
-    --accent-dark: #805323;
-    --accent-soft: rgba(168, 115, 53, 0.12);
-    --heading: #5d4025;
+    --bg: #fdfbf7;
+    --surface: #fffbf0;
+    --surface-soft: #f5ead5;
+    --ink: #44403c;
+    --ink-soft: #57534e;
+    --ink-muted: #78716c;
+    --line: #e7e5e4;
+    --accent: #b45309;
+    --accent-dark: #92400e;
+    --accent-soft: rgba(180, 83, 9, 0.12);
+    --heading: #78350f;
     --font-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 [data-theme="warm-luxury"] {
     color-scheme: light;
-    --bg: #f5f1ed;
+    --bg: #f8fafc;
     --surface: #ffffff;
-    --surface-soft: #f4e4db;
-    --ink: #24211f;
-    --ink-soft: #45403d;
-    --ink-muted: #77706b;
-    --line: #e4c7b8;
-    --accent: #f25d2d;
-    --accent-dark: #d8441a;
-    --accent-soft: rgba(242, 93, 45, 0.12);
-    --heading: #2a1f1b;
+    --surface-soft: #fff7ed;
+    --ink: #1e293b;
+    --ink-soft: #334155;
+    --ink-muted: #64748b;
+    --line: #ffedd5;
+    --accent: #ea580c;
+    --accent-dark: #c2410c;
+    --accent-soft: rgba(234, 88, 12, 0.12);
+    --heading: #9a3412;
     --font-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -377,6 +377,11 @@ a:hover {
     .cars-landing-background-rear { display: none !important; }
     .cars-auth-background-front { opacity: 1 !important; }
     .cars-auth-background-rear { display: none !important; }
+}
+
+option {
+    color: var(--ink);
+    background-color: var(--surface);
 }
 
 .cars-portal-landing {
