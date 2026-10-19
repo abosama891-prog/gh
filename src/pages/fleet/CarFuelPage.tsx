@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import type ExcelJS from 'exceljs';
-import { ArrowLeft, Bell, BusFront, CalendarDays, Car, CarFront, CarTaxiFront, Check, CheckCheck, ChevronDown, ClipboardList, Download, Fuel, Gauge, Home, LayoutDashboard, LocateFixed, LogOut, MapPinned, MoreVertical, Pencil, Plus, RefreshCw, RotateCcw, Settings, Trash2, TrendingDown, TrendingUp, Truck, Upload, Wrench } from 'lucide-react';
+import { ArrowLeft, Bell, BusFront, CalendarDays, Calculator, Car, CarFront, CarTaxiFront, Check, CheckCheck, ChevronDown, ClipboardList, Download, Fuel, Gauge, Home, LayoutDashboard, LogOut, MapPin, MapPinned, MoreVertical, Pencil, Plus, RefreshCw, RotateCcw, Settings, Trash2, TrendingDown, TrendingUp, Truck, Upload, Wrench } from 'lucide-react';
 import { addGuest, deleteGuest as deleteGuestFromCloud, setGuestActive, subscribeToFleetUsers, updateGuest } from '../../services/fleetUserStore';
 import type { FleetGuest, FleetUser } from '../../services/fleetUserStore';
 import { firestore, isFirebaseConfigured } from '../../services/firebase';
@@ -14,8 +14,6 @@ import { recordFleetAuditEntry, subscribeToFleetAuditLog } from '../../services/
 import type { FleetAuditAction, FleetAuditEntry } from '../../services/fleetAuditLog';
 import { applyUpdate } from '../../services/serviceWorker';
 import { clearDeferredPrompt, getDeferredPrompt } from '../../services/pwaInstall';
-import RouteMapPicker from './RouteMapPicker';
-import { reverseGeocode } from './reverseGeocode';
 import { loadMoreGpsLogs, subscribeToGpsLogs } from '../../services/gpsStore';
 import type { GpsLog, GpsLogCursor } from '../../services/gpsStore';
 import './car-fuel.css';
@@ -87,6 +85,8 @@ type RouteEntry = {
   id: string;
   date: string;
   vehicleId: string | null;
+  isDailyVehicle?: boolean;
+  dailyVehicleId?: string;
   vehicleName: string;
   plate: string;
   departure: string;
@@ -95,7 +95,8 @@ type RouteEntry = {
   driver: string;
 };
 
-type RouteForm = Omit<RouteEntry, 'id' | 'vehicleId'> & { vehicleId: string };
+type RouteDailyDraft = Pick<RouteEntry, 'departure' | 'route' | 'representative' | 'driver'>;
+type RouteBoardVehicle = { id: string; fleetVehicleId: string | null; name: string; plate: string; isDailyOnly: boolean };
 type DeviationNote = { text: string; createdAt: string };
 type DeviationNotesByMonth = Record<string, Record<string, DeviationNote>>;
 
@@ -232,7 +233,6 @@ const themeOptions: ThemeKey[] = ['dark-premium', 'emerald-light', 'warm-luxury'
 const fontSizePresets = { small: 'صغير', medium: 'متوسط', large: 'كبير' } as const;
 type FontSizeKey = keyof typeof fontSizePresets;
 const today = () => new Date().toISOString().slice(0, 10);
-const createEmptyRouteForm = (): RouteForm => ({ date: '', vehicleId: '', vehicleName: '', plate: '', departure: '', route: '', representative: '', driver: '' });
 const vehicleToneStyle = (vehicleId: string, vehicles: Vehicle[], vehicleTypeColors: VehicleTypeColors = defaultVehicleTypeColors): React.CSSProperties => {
   const vehicle = vehicles.find((item) => item.id === vehicleId);
   const vehicleType = vehicle?.vehicleType || (vehicle ? inferVehicleType(vehicle.name) : undefined);
@@ -355,6 +355,8 @@ const isRouteEntry = (value: unknown): value is RouteEntry => {
   return typeof entry.id === 'string'
     && typeof entry.date === 'string'
     && (typeof entry.vehicleId === 'string' || entry.vehicleId === null)
+    && (entry.isDailyVehicle === undefined || typeof entry.isDailyVehicle === 'boolean')
+    && (entry.dailyVehicleId === undefined || typeof entry.dailyVehicleId === 'string')
     && typeof entry.vehicleName === 'string'
     && typeof entry.plate === 'string'
     && typeof entry.departure === 'string'
@@ -431,6 +433,7 @@ const compactExpenseHeaders: Record<keyof ExpenseBreakdown, string> = {
 };
 const templateHeaderAliases: Record<string, string> = {
   'اللوحة': 'رقم اللوحة',
+  'السيارة': 'اسم السيارة',
   'السائق': 'اسم السائق',
   'خط سير': 'خط السير',
   'المسار': 'خط السير',
@@ -440,6 +443,7 @@ const templateHeaderAliases: Record<string, string> = {
   'قراءة حالية': 'القراءة الحالية',
   'تموين فعلي': 'مصروف الوقود الفعلي (جنيه)',
   'التموين الفعلي': 'مصروف الوقود الفعلي (جنيه)',
+  'مصروف الوقود': 'مصروف الوقود الفعلي (جنيه)',
   'مصروف الوقود الفعلي': 'مصروف الوقود الفعلي (جنيه)',
   'قيمة التموين الفعلية': 'مصروف الوقود الفعلي (جنيه)',
   'قيمة التموين الفعلية (جنيه)': 'مصروف الوقود الفعلي (جنيه)',
@@ -464,13 +468,21 @@ const normalizeTemplateHeader = (header: string) => {
     : normalized;
 };
 const normalizeTemplateHeaders = (headers: string[]) => {
-  const normalizedHeaders = headers.map(normalizeTemplateHeader);
+  const normalizedHeaders: string[] = [];
   const seenHeaders = new Set<string>();
-  normalizedHeaders.forEach((header) => {
+
+  headers.forEach((headerValue) => {
+    const header = normalizeTemplateHeader((headerValue ?? '').trim());
     if (!header) return;
-    if (seenHeaders.has(header)) throw new Error(`عنوان العمود «${header}» مكرر بعد توحيد أسماء الأعمدة.`);
-    seenHeaders.add(header);
+    const trimmed = header.trim();
+    const isWorksheetTitle = /^(سجل السيارة|قالب مصروفات السيارة|كشف الحركة|قالب|بيانات السيارة)/i.test(trimmed)
+      && /[-–—]/.test(trimmed);
+    if (isWorksheetTitle) return;
+    if (seenHeaders.has(trimmed)) return;
+    seenHeaders.add(trimmed);
+    normalizedHeaders.push(trimmed);
   });
+
   return normalizedHeaders;
 };
 const detailColumns: { key: DetailColumnKey; label: string }[] = [
@@ -729,12 +741,11 @@ const parseEntryDateInput = (value: string): string | null => {
   if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 };
+const parseDriverSettlementDate = (value: string) => parseEntryDateInput(value
+  .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
+  .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))));
 const deviationClass = (value: number) => value < 0 ? 'ledger-ok' : value > 250 ? 'ledger-warning' : 'ledger-neutral';
-const rateCondition = (rate: number) => rate > 12
-  ? { label: '🟢 ممتاز', className: 'is-excellent' }
-  : rate >= 10
-    ? { label: '🟡 جيد', className: 'is-good' }
-    : { label: '🔴 ضعيف', className: 'is-poor' };
+const CLEAR_ENTRIES_CONFIRMATION_PASSWORD = '1020350';
 const monthNames = Array.from({ length: 12 }, (_, index) => new Intl.DateTimeFormat('ar-EG', { month: 'long' }).format(new Date(2020, index, 1)));
 const deviationMonthDisplayName = (month: string): string => {
   const [year, monthNumber] = month.split('-').map(Number);
@@ -837,6 +848,8 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   latestFleetDataRef.current = data;
   const lastSyncedFleetFingerprintRef = useRef<string | null>(null);
   const [routeEntries, setRouteEntries] = useState<RouteEntry[]>(readRouteEntries);
+  const latestRouteEntriesRef = useRef(routeEntries);
+  latestRouteEntriesRef.current = routeEntries;
   const [gpsLogs, setGpsLogs] = useState<GpsLog[]>([]);
   const [gpsLogCursor, setGpsLogCursor] = useState<GpsLogCursor | null>(null);
   const [hasMoreGpsLogs, setHasMoreGpsLogs] = useState(false);
@@ -908,6 +921,17 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [ledgerPeriod, setLedgerPeriod] = useState<LedgerPeriod>('all');
   const [ledgerMonthYear, setLedgerMonthYear] = useState('');
   const [isLedgerMonthPickerOpen, setIsLedgerMonthPickerOpen] = useState(false);
+  const [isDriverSettlementOpen, setIsDriverSettlementOpen] = useState(false);
+  const [driverSettlementDriver, setDriverSettlementDriver] = useState('');
+  const [driverSettlementPeriodMode, setDriverSettlementPeriodMode] = useState<'month' | 'date'>('date');
+  const [driverSettlementMonth, setDriverSettlementMonth] = useState(() => dateInputValue(new Date()).slice(0, 7));
+  const [isDriverSettlementMonthPickerOpen, setIsDriverSettlementMonthPickerOpen] = useState(false);
+  const [driverSettlementFrom, setDriverSettlementFrom] = useState('');
+  const [driverSettlementTo, setDriverSettlementTo] = useState('');
+  const [driverSettlementFromDraft, setDriverSettlementFromDraft] = useState('');
+  const [driverSettlementToDraft, setDriverSettlementToDraft] = useState('');
+  const driverSettlementFromPickerRef = useRef<HTMLInputElement>(null);
+  const driverSettlementToPickerRef = useRef<HTMLInputElement>(null);
   const [monthlySummaryMonth, setMonthlySummaryMonth] = useState(() => dateInputValue(new Date()).slice(0, 7));
   const [isMonthlySummaryCollapsed, setIsMonthlySummaryCollapsed] = useState(true);
   const [isLedgerSheetCollapsed, setIsLedgerSheetCollapsed] = useState(true);
@@ -967,6 +991,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [pendingDeleteEntry, setPendingDeleteEntry] = useState<FuelEntry | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
   const [isClearEntriesConfirmationOpen, setIsClearEntriesConfirmationOpen] = useState(false);
+  const [clearEntriesConfirmationPassword, setClearEntriesConfirmationPassword] = useState('');
+  const [clearEntriesMode, setClearEntriesMode] = useState<'all' | 'month'>('all');
+  const [clearEntriesMonth, setClearEntriesMonth] = useState(() => dateInputValue(new Date()).slice(0, 7));
+  const [isClearEntriesMonthPickerOpen, setIsClearEntriesMonthPickerOpen] = useState(false);
   const [isClearingAllEntries, setIsClearingAllEntries] = useState(false);
   const [isRateEditorOpen, setIsRateEditorOpen] = useState(false);
   const [isRateCardExpanded, setIsRateCardExpanded] = useState(false);
@@ -975,11 +1003,14 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [deviationNoteDraft, setDeviationNoteDraft] = useState('');
   const [vehicleForm, setVehicleForm] = useState({ name: '', vehicleType: 'dmax' as VehicleType, plate: '', driver: '', openingOdometer: '', kmPerLiter: '20', distanceBaseKm: '105' });
   const [entryForm, setEntryForm] = useState<EntryForm>(() => initialEntryDraft?.form ?? createEmptyEntryForm());
-  const [routeForm, setRouteForm] = useState<RouteForm>(createEmptyRouteForm);
-  const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
-  const [locatingRouteField, setLocatingRouteField] = useState<'departure' | 'route' | null>(null);
-  const [routeMapField, setRouteMapField] = useState<'departure' | 'route' | null>(null);
   const [routeDateFilter, setRouteDateFilter] = useState(today);
+  const [routeDateFilterDraft, setRouteDateFilterDraft] = useState(() => formatEntryDateInput(today()));
+  const routeDatePickerRef = useRef<HTMLInputElement>(null);
+  const [routeDailyDrafts, setRouteDailyDrafts] = useState<Record<string, RouteDailyDraft>>({});
+  const [expandedRouteVehicleIds, setExpandedRouteVehicleIds] = useState<Set<string>>(() => new Set());
+  const [savingRouteVehicleIds, setSavingRouteVehicleIds] = useState<Set<string>>(() => new Set());
+  const [routeVehicleDialog, setRouteVehicleDialog] = useState<{ vehicleId: string | null; isDailyOnly: boolean; plate: string; name: string } | null>(null);
+  const [routeVehicleDialogError, setRouteVehicleDialogError] = useState('');
   const [isExportingRoutes, setIsExportingRoutes] = useState(false);
   const [entryPlateSearch, setEntryPlateSearch] = useState(initialEntryDraft?.entryPlateSearch ?? '');
   const [fuelAmountDraft, setFuelAmountDraft] = useState(initialEntryDraft?.fuelAmountDraft ?? '');
@@ -991,6 +1022,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const canManageUsers = currentUser.role === 'admin' && Boolean(firebaseAuth?.currentUser);
   const canEditFleet = currentUser.role === 'admin' && Boolean(firebaseAuth?.currentUser);
   const canAccessEntries = currentUser.role !== 'viewer';
+  const isClearEntriesPasswordValid = clearEntriesConfirmationPassword.trim().toLowerCase() === CLEAR_ENTRIES_CONFIRMATION_PASSWORD;
   const recordAudit = (action: FleetAuditAction, itemName: string) => {
     if (!canEditFleet) return;
     void recordFleetAuditEntry(currentUser, action, itemName).catch((error: unknown) => {
@@ -1244,67 +1276,6 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     >{fontSizePresets[key]}</button>)}</div>
   </div>;
 
-  const handleRouteVehicleChange = (vehicleId: string) => {
-    if (vehicleId === 'other') {
-      setRouteForm((current) => ({ ...current, vehicleId, vehicleName: '', plate: '', driver: '' }));
-      return;
-    }
-    const vehicle = data.vehicles.find((item) => item.id === vehicleId);
-    setRouteForm((current) => vehicle
-      ? { ...current, vehicleId, vehicleName: vehicle.name, plate: vehicle.plate, driver: vehicle.driver }
-      : { ...current, vehicleId, vehicleName: '', plate: '' });
-  };
-
-  const useCurrentLocation = (field: 'departure' | 'route') => {
-    if (!navigator.geolocation) {
-      setNoticeIsError(true);
-      setNotice('هذا الجهاز أو المتصفح لا يدعم تحديد الموقع GPS');
-      return;
-    }
-    setLocatingRouteField(field);
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        void reverseGeocode({ latitude: coords.latitude, longitude: coords.longitude })
-          .then((address) => {
-            setRouteForm((current) => ({ ...current, [field]: address }));
-            setNoticeIsError(false);
-            setNotice(field === 'departure' ? `تم تحديد نقطة الانطلاق: ${address}` : `تم تحديد الوجهة: ${address}`);
-          })
-          .catch((error: unknown) => {
-            console.error('Could not resolve current GPS location to an address', error);
-            setNoticeIsError(true);
-            setNotice('تم تحديد إحداثيات GPS، لكن تعذر جلب اسم العنوان. استخدم اختيار الخريطة أو اكتب المكان يدويًا.');
-          })
-          .finally(() => setLocatingRouteField(null));
-      },
-      (error) => {
-        setLocatingRouteField(null);
-        setNoticeIsError(true);
-        if (error.code === error.PERMISSION_DENIED) setNotice('لم يتم السماح بالوصول إلى GPS. فعّل إذن الموقع للمتصفح ثم أعد المحاولة.');
-        else if (error.code === error.POSITION_UNAVAILABLE) setNotice('تعذر تحديد موقع GPS الحالي. تحقق من تشغيل خدمات الموقع.');
-        else if (error.code === error.TIMEOUT) setNotice('استغرق تحديد موقع GPS وقتًا طويلًا. أعد المحاولة.');
-        else setNotice('حدث خطأ أثناء تحديد موقع GPS. أعد المحاولة.');
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 },
-    );
-  };
-
-  const routeMapInitialCoordinate = (field: 'departure' | 'route') => {
-    const match = routeForm[field].match(/(?:GPS:\s*)?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/i);
-    if (!match) return undefined;
-    const latitude = Number(match[1]);
-    const longitude = Number(match[2]);
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return undefined;
-    return { latitude, longitude };
-  };
-
-  const setRouteMapAddress = (field: 'departure' | 'route', address: string) => {
-    setRouteForm((current) => ({ ...current, [field]: address }));
-    setRouteMapField(null);
-    setNoticeIsError(false);
-    setNotice(field === 'departure' ? `تم تحديد نقطة الانطلاق: ${address}` : `تم تحديد الوجهة: ${address}`);
-  };
-
   const loadOlderGpsLogs = async () => {
     if (!gpsLogCursor || isLoadingMoreGpsLogs) return;
     setIsLoadingMoreGpsLogs(true);
@@ -1326,80 +1297,125 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     }
   };
 
-  const saveRouteEntry = (event: React.FormEvent<HTMLFormElement>) => {
+  const routeBoardVehicles: RouteBoardVehicle[] = [
+    ...data.vehicles.map((vehicle) => {
+      const savedDescription = routeEntries.find((entry) => entry.isDailyVehicle && entry.vehicleId === vehicle.id);
+      return {
+        id: vehicle.id,
+        fleetVehicleId: vehicle.id,
+        name: savedDescription?.vehicleName || vehicle.name,
+        plate: savedDescription?.plate || vehicle.plate,
+        isDailyOnly: false,
+      };
+    }),
+    ...routeEntries.filter((entry) => entry.isDailyVehicle && entry.vehicleId === null).map((entry) => ({
+      id: entry.id,
+      fleetVehicleId: null,
+      name: entry.vehicleName,
+      plate: entry.plate,
+      isDailyOnly: true,
+    })),
+  ];
+
+  const saveRouteVehicleMetadata = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canEditFleet) return;
-    const selectedVehicle = data.vehicles.find((vehicle) => vehicle.id === routeForm.vehicleId);
-    const isOtherVehicle = routeForm.vehicleId === 'other';
-    if (!routeForm.date || !routeForm.vehicleId || (!selectedVehicle && !isOtherVehicle)) {
-      setNoticeIsError(true);
-      setNotice('اختر سيارة من القائمة أو حدد سيارة إيجار / أخرى');
+    if (!canEditFleet || !routeVehicleDialog) return;
+    const plate = routeVehicleDialog.plate.trim();
+    const name = routeVehicleDialog.name.trim();
+    if (!plate || !name) {
+      setRouteVehicleDialogError('أدخل رقم السيارة والوصف.');
       return;
     }
-    if (isOtherVehicle && (!routeForm.vehicleName.trim() || !routeForm.plate.trim())) {
-      setNoticeIsError(true);
-      setNotice('أدخل وصف السيارة ورقمها أو اكتب «إيجار» في خانة الرقم');
+    const duplicateVehicle = routeBoardVehicles.some((vehicle) => (
+      vehicle.id !== routeVehicleDialog.vehicleId
+      && vehicle.plate.trim().toLocaleLowerCase('ar-EG') === plate.toLocaleLowerCase('ar-EG')
+    ));
+    if (duplicateVehicle) {
+      setRouteVehicleDialogError('رقم السيارة موجود بالفعل في بيان الحركة.');
       return;
     }
-    if (!routeForm.departure.trim() || !routeForm.route.trim() || !routeForm.driver.trim()) {
-      setNoticeIsError(true);
-      setNotice('أدخل نقطة الانطلاق وخط السير واسم السائق');
-      return;
-    }
-    const savedRoute: RouteEntry = {
-      id: editingRouteId || `r${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      date: routeForm.date,
-      vehicleId: selectedVehicle?.id ?? null,
-      vehicleName: selectedVehicle?.name ?? routeForm.vehicleName.trim(),
-      plate: selectedVehicle?.plate ?? routeForm.plate.trim(),
-      departure: routeForm.departure.trim(),
-      route: routeForm.route.trim(),
-      representative: routeForm.representative.trim(),
-      driver: routeForm.driver.trim(),
+
+    const dailyOnly = routeVehicleDialog.isDailyOnly;
+    const markerId = dailyOnly
+      ? routeVehicleDialog.vehicleId || `route-vehicle:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      : `route-vehicle-meta:${routeVehicleDialog.vehicleId}`;
+    const marker: RouteEntry = {
+      id: dailyOnly ? markerId : `route-vehicle-meta:${routeVehicleDialog.vehicleId}`,
+      date: '__vehicle__',
+      vehicleId: dailyOnly ? null : routeVehicleDialog.vehicleId,
+      isDailyVehicle: true,
+      vehicleName: name,
+      plate,
+      departure: '',
+      route: '',
+      representative: '',
+      driver: '',
     };
-    setRouteEntries((current) => editingRouteId
-      ? current.map((entry) => entry.id === editingRouteId ? savedRoute : entry)
-      : [savedRoute, ...current]);
-    setRouteDateFilter(savedRoute.date);
-    setRouteForm(createEmptyRouteForm());
-    setEditingRouteId(null);
-    setNoticeIsError(false);
-    setNotice(editingRouteId ? 'تم تحديث خط السير' : 'تم تسجيل خط السير');
-    if (editingRouteId) recordAudit('edit', `خط سير السيارة ${savedRoute.plate} بتاريخ ${formatDateArabic(savedRoute.date)}`);
-  };
-
-  const editRouteEntry = (entry: RouteEntry) => {
-    if (!canEditFleet) return;
-    const registeredVehicleId = entry.vehicleId && data.vehicles.some((vehicle) => vehicle.id === entry.vehicleId)
-      ? entry.vehicleId
-      : null;
-    setRouteForm({
-      ...entry,
-      vehicleId: registeredVehicleId ?? 'other',
+    setRouteEntries((current) => {
+      const existing = current.findIndex((entry) => (
+        dailyOnly ? entry.id === marker.id : entry.isDailyVehicle && entry.vehicleId === routeVehicleDialog.vehicleId
+      ));
+      return existing >= 0
+        ? current.map((entry, index) => index === existing ? marker : entry)
+        : [...current, marker];
     });
-    setEditingRouteId(entry.id);
-    setRouteDateFilter(entry.date);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setRouteVehicleDialog(null);
+    setRouteVehicleDialogError('');
+    setNoticeIsError(false);
+    setNotice(dailyOnly ? 'تمت إضافة السيارة إلى بيان الحركة فقط.' : 'تم تحديث وصف السيارة في بيان الحركة فقط.');
   };
 
-  const deleteRouteEntry = (entry: RouteEntry) => {
-    if (!canEditFleet || !window.confirm(`هل تريد حذف خط سير السيارة ${entry.plate} بتاريخ ${formatDateArabic(entry.date)}؟`)) return;
-    setRouteEntries((current) => current.filter((item) => item.id !== entry.id));
-    if (editingRouteId === entry.id) {
-      setEditingRouteId(null);
-      setRouteForm(createEmptyRouteForm());
-    }
-    recordAudit('delete', `خط سير السيارة ${entry.plate} بتاريخ ${formatDateArabic(entry.date)}`);
+  const saveRouteVehicle = async (vehicle: RouteBoardVehicle) => {
+    const parsedDate = parseDriverSettlementDate(routeDateFilterDraft);
+    if (!canEditFleet || !routesCloudLoaded || !parsedDate || parsedDate !== routeDateFilter || savingRouteVehicleIds.has(vehicle.id)) return;
+    setSavingRouteVehicleIds((current) => new Set(current).add(vehicle.id));
+    const key = `${routeDateFilter}|${vehicle.id}`;
+    const draft = routeDailyDrafts[key] || { departure: '', route: '', representative: '', driver: '' };
+    const existing = latestRouteEntriesRef.current.find((entry) => !entry.isDailyVehicle
+      && entry.date === routeDateFilter
+      && (vehicle.fleetVehicleId
+        ? entry.vehicleId === vehicle.fleetVehicleId
+        : entry.dailyVehicleId === vehicle.id || (!entry.vehicleId && entry.plate.trim() === vehicle.plate.trim())));
+    const savedEntry: RouteEntry = {
+      id: existing?.id || `r${routeDateFilter}-${vehicle.id}`,
+      date: routeDateFilter,
+      vehicleId: vehicle.fleetVehicleId,
+      isDailyVehicle: false,
+      dailyVehicleId: vehicle.isDailyOnly ? vehicle.id : undefined,
+      vehicleName: vehicle.name,
+      plate: vehicle.plate,
+      departure: draft.departure.trim(),
+      route: draft.route.trim(),
+      representative: draft.representative.trim(),
+      driver: draft.driver.trim(),
+    };
+    const nextEntries = existing
+      ? latestRouteEntriesRef.current.map((entry) => entry.id === existing.id ? savedEntry : entry)
+      : [...latestRouteEntriesRef.current, savedEntry];
+    latestRouteEntriesRef.current = nextEntries;
+    setRouteEntries(nextEntries);
     setNoticeIsError(false);
-    setNotice('تم حذف سجل خط السير');
+    try {
+      localStorage.setItem(ROUTE_STORAGE_KEY, JSON.stringify(nextEntries));
+      if (isFirebaseConfigured) {
+        if (!routesCloudAvailable) throw new Error('لا يتوفر اتصال Firestore حاليًا');
+        await saveCloudRouteEntries(nextEntries);
+      }
+      setNotice(`${isFirebaseConfigured ? 'تم حفظ' : 'تم حفظ محليًا'} بيان حركة سيارة ${vehicle.plate} بتاريخ ${formatDateArabic(routeDateFilter)}`);
+    } catch (error) {
+      console.error('Could not save daily vehicle route to Firestore', error);
+      setNoticeIsError(true);
+      setNotice(`تعذر حفظ بيان حركة السيارة في Firestore: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+    } finally {
+      setSavingRouteVehicleIds((current) => {
+        const next = new Set(current);
+        next.delete(vehicle.id);
+        return next;
+      });
+    }
   };
 
   const exportRouteEntries = async () => {
-    if (!routeEntriesForDate.length) {
-      setNoticeIsError(true);
-      setNotice('لا توجد سجلات لتصديرها في هذا التاريخ');
-      return;
-    }
     setIsExportingRoutes(true);
     try {
       const ExcelJS = (await import('exceljs')).default;
@@ -1408,16 +1424,16 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       workbook.subject = 'خط سير السيارات اليومي';
       const worksheet = workbook.addWorksheet(routeDateFilter, { views: [{ rightToLeft: true, showGridLines: false, state: 'frozen', ySplit: 2 }] });
       worksheet.columns = [
-        { width: 8 }, { width: 16 }, { width: 19 }, { width: 19 },
-        { width: 34 }, { width: 36 }, { width: 24 }, { width: 24 },
+        { width: 8 }, { width: 16 }, { width: 19 }, { width: 34 },
+        { width: 36 }, { width: 24 }, { width: 24 },
       ];
-      worksheet.mergeCells('A1:H1');
+      worksheet.mergeCells('A1:G1');
       worksheet.getCell('A1').value = `خط سير السيارات اليومي - ${formatDateArabic(routeDateFilter)}`;
       worksheet.getCell('A1').font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
       worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF9A682C' } };
       worksheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
       worksheet.getRow(1).height = 32;
-      const header = ['م', 'التاريخ', 'الوصف', 'رقم السيارة', 'نقطة الإنطلاق', 'خط السير', 'المندوب', 'السائق'];
+      const header = ['م', 'الوصف', 'رقم السيارة', 'نقطة الإنطلاق', 'خط السير', 'المندوب', 'السائق'];
       const headerRow = worksheet.addRow(header);
       headerRow.height = 26;
       headerRow.eachCell((cell) => {
@@ -1425,8 +1441,11 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF5D4025' } };
         cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       });
-      routeEntriesForDate.forEach((entry, index) => {
-        const row = worksheet.addRow([index + 1, formatDateArabic(entry.date), entry.vehicleName, entry.plate, entry.departure, entry.route, entry.representative || '—', entry.driver]);
+      routeBoardVehicles.forEach((vehicle, index) => {
+        const entry = routeEntriesForDate.find((route) => vehicle.fleetVehicleId
+          ? route.vehicleId === vehicle.fleetVehicleId
+          : route.dailyVehicleId === vehicle.id || (!route.vehicleId && route.plate.trim() === vehicle.plate.trim()));
+        const row = worksheet.addRow([index + 1, vehicle.name, vehicle.plate, entry?.departure || '', entry?.route || '', entry?.representative || '', entry?.driver || '']);
         row.eachCell((cell) => {
           cell.font = { name: 'Arial', size: 11 };
           cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
@@ -1453,7 +1472,13 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
 
   const routeEntriesForDate = routeEntries
     .filter((entry) => entry.date === routeDateFilter)
-    .sort((first, second) => first.departure.localeCompare(second.departure, 'ar'));
+    .sort((first, second) => first.plate.localeCompare(second.plate, 'ar'));
+  const savedRouteVehicleCount = routeBoardVehicles.filter((vehicle) => routeEntriesForDate.some((entry) => (
+    vehicle.fleetVehicleId
+      ? entry.vehicleId === vehicle.fleetVehicleId
+      : entry.dailyVehicleId === vehicle.id || (!entry.vehicleId && entry.plate.trim() === vehicle.plate.trim())
+  ))).length;
+  const routeDateFilterInvalid = !parseDriverSettlementDate(routeDateFilterDraft);
 
   const saveOpeningOdometer = (vehicle: Vehicle, entriesCount: number) => {
     if (!canEditFleet) return;
@@ -1808,6 +1833,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const selectedAverageRate = selectedRateTotals.actualLiters > 0
     ? selectedRateTotals.distance / selectedRateTotals.actualLiters
     : 0;
+  const selectedCalculatedBaseDistance = selectedSummary
+    ? selectedAverageRate * vehicleFuelRate(selectedSummary.vehicle)
+    : 0;
   const selectedBestRate = selectedMovementRates.reduce((best, rate) => Math.max(best, rate), 0);
   const selectedWorstRate = selectedMovementRates.length
     ? selectedMovementRates.reduce((worst, rate) => Math.min(worst, rate), Number.POSITIVE_INFINITY)
@@ -1839,6 +1867,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const chartRateMovements = selectedRateMovements
     .filter((movement): movement is typeof movement & { rate: number } => movement.rate !== null && Number.isFinite(movement.rate))
     .slice(-12);
+  const chartAverageRate = chartRateMovements.length
+    ? chartRateMovements.reduce((total, movement) => total + movement.rate, 0) / chartRateMovements.length
+    : 0;
   const chartMaximumRate = Math.max(12, ...chartRateMovements.map(({ rate }) => rate));
   const selectedEntryDetails = selectedEntries.reduce<Array<{
     entry: FuelEntry;
@@ -2022,6 +2053,37 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const displayedDeviationSummaries = deviationSummaries.filter((summary) => canEditFleet || !hiddenDeviationVehicleIds.has(summary.vehicle.id));
   const visibleDeviationSummaries = displayedDeviationSummaries.filter((summary) => deviationSummaryVehicleId === 'all' || summary.vehicle.id === deviationSummaryVehicleId);
   const visibleDeviationTotal = visibleDeviationSummaries.reduce((total, summary) => total + summary.deviation, 0);
+  const driverSettlementDrivers = useMemo(() => [...new Set(data.entries
+    .map((entry) => entry.driver?.trim() || data.vehicles.find((vehicle) => vehicle.id === entry.vehicleId)?.driver.trim() || '')
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right, 'ar')), [data.entries, data.vehicles]);
+  const parsedDriverSettlementFrom = parseDriverSettlementDate(driverSettlementFromDraft);
+  const parsedDriverSettlementTo = parseDriverSettlementDate(driverSettlementToDraft);
+  const driverSettlementDateInputInvalid = driverSettlementPeriodMode === 'date' && Boolean(
+    (driverSettlementFromDraft.trim() && !parsedDriverSettlementFrom)
+    || (driverSettlementToDraft.trim() && !parsedDriverSettlementTo),
+  );
+  const driverSettlementEntries = useMemo(() => data.entries.filter((entry) => {
+    if (driverSettlementDateInputInvalid) return false;
+    const driver = entry.driver?.trim() || data.vehicles.find((vehicle) => vehicle.id === entry.vehicleId)?.driver.trim() || '';
+    if (driver !== driverSettlementDriver) return false;
+    if (driverSettlementPeriodMode === 'month') return entry.date.slice(0, 7) === driverSettlementMonth;
+    return (!driverSettlementFrom || entry.date >= driverSettlementFrom)
+      && (!driverSettlementTo || entry.date <= driverSettlementTo);
+  }), [data.entries, data.vehicles, driverSettlementDriver, driverSettlementPeriodMode, driverSettlementMonth, driverSettlementFrom, driverSettlementTo, driverSettlementDateInputInvalid]);
+  const driverSettlementTotals = driverSettlementEntries.reduce((totals, entry) => {
+    const vehicle = data.vehicles.find((item) => item.id === entry.vehicleId);
+    const liters = litersForEntry(entry, vehicle);
+    return {
+      distance: totals.distance + Math.max(0, entry.currentOdometer - entry.startOdometer),
+      actual: totals.actual + entryFuelCost(entry),
+      allowance: totals.allowance + entryAllowanceValue(entry, fuelAllowanceRate(data), liters),
+      deviation: totals.deviation + entryDeviation(entry, fuelAllowanceRate(data), liters),
+    };
+  }, { distance: 0, actual: 0, allowance: 0, deviation: 0 });
+  const driverSettlementDateRangeInvalid = driverSettlementPeriodMode === 'date' && (
+    driverSettlementDateInputInvalid
+    || Boolean(driverSettlementFrom && driverSettlementTo && driverSettlementFrom > driverSettlementTo)
+  );
   const availableDeviationMonths = [...new Set(data.entries.map((entry) => entry.date.slice(0, 7)).filter((month) => /^\d{4}-\d{2}$/.test(month)))].sort((left, right) => right.localeCompare(left));
   const deviationMonthLabel = selectedDeviationMonths.length === 0
     ? 'كل الأشهر'
@@ -2749,35 +2811,32 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       if (!vehicleSheet) throw new Error('لم أجد ورقة «بيانات السيارات» في الملف.');
       const vehicleRows = worksheetToRows(vehicleSheet);
       const vehicleHeaders = normalizeTemplateHeaders(vehicleRows[0] || []);
-      const requiredVehicleHeaders = ['معرف السيارة', 'رقم اللوحة', 'اسم السيارة', 'اسم السائق', 'بداية العداد', 'معدل الاستهلاك (كم/لتر)'];
+      const requiredVehicleHeaders = ['رقم اللوحة', 'اسم السيارة', 'اسم السائق', 'بداية العداد', 'معدل الاستهلاك (كم/لتر)'];
       const missingVehicleHeaders = requiredVehicleHeaders.filter((header) => !vehicleHeaders.includes(header));
       if (missingVehicleHeaders.length) throw new Error(`أعمدة بيانات السيارات الناقصة: ${missingVehicleHeaders.join('، ')}`);
       const requiredEntryHeaders = [
-        'معرف السيارة', 'رقم اللوحة', 'معرف الحركة', 'التاريخ', 'اسم السائق', 'خط السير',
+        'رقم اللوحة', 'معرف الحركة', 'التاريخ', 'اسم السائق', 'خط السير',
         'القراءة السابقة', 'القراءة الحالية', 'مصروف الوقود الفعلي (جنيه)', 'التفصيل',
         ...expenseFields.map((field) => `${field.label} (جنيه)`),
       ];
 
-      const vehiclesById = new Map(data.vehicles.map((vehicle) => [vehicle.id, vehicle]));
+      const normalizePlate = (plate: string) => plate.trim().toLocaleLowerCase('ar-EG');
+      const vehiclesByPlate = new Map(data.vehicles.map((vehicle) => [normalizePlate(vehicle.plate), vehicle]));
       const importedVehicles = new Map<string, Vehicle>();
-      const vehicleErrors: string[] = [];
       const seenVehicleIds = new Set<string>();
-      vehicleRows.slice(1).forEach((row, index) => {
+      for (const [index, row] of vehicleRows.slice(1).entries()) {
         const value = (header: string) => (row[vehicleHeaders.indexOf(header)] || '').trim();
-        const vehicleId = value('معرف السيارة');
-        if (!vehicleId && !row.some((cell) => cell.trim())) return;
-        const lineNumber = index + 2;
-        const existing = vehiclesById.get(vehicleId);
-        if (!existing) {
-          vehicleErrors.push(`ورقة السيارات، صف ${lineNumber}: معرف السيارة غير موجود`);
-          return;
-        }
-        if (seenVehicleIds.has(vehicleId)) {
-          vehicleErrors.push(`ورقة السيارات، صف ${lineNumber}: معرف السيارة مكرر`);
-          return;
-        }
-        seenVehicleIds.add(vehicleId);
         const plate = value('رقم اللوحة');
+        if (!plate && !row.some((cell) => cell.trim())) continue;
+        const lineNumber = index + 2;
+        const existing = vehiclesByPlate.get(normalizePlate(plate));
+        if (!existing) {
+          throw new Error(`ورقة السيارات، صف ${lineNumber}: رقم اللوحة غير موجود`);
+        }
+        if (seenVehicleIds.has(existing.id)) {
+          throw new Error(`ورقة السيارات، صف ${lineNumber}: رقم اللوحة مكرر`);
+        }
+        seenVehicleIds.add(existing.id);
         const name = value('اسم السيارة');
         const driver = value('اسم السائق');
         const openingText = value('بداية العداد');
@@ -2785,61 +2844,54 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         const openingOdometer = parseTemplateNumber(openingText);
         const kmPerLiter = parseTemplateNumber(rateText);
         const errors: string[] = [];
-        if (plate.toLocaleLowerCase('ar-EG') !== existing.plate.trim().toLocaleLowerCase('ar-EG')) errors.push('رقم اللوحة لا يطابق السيارة المرتبطة بالمعرف');
         if (!name) errors.push('اسم السيارة مطلوب');
         if (!openingText || !Number.isFinite(openingOdometer) || openingOdometer < 0) errors.push('بداية العداد غير صحيحة');
         if (!rateText || !Number.isFinite(kmPerLiter) || kmPerLiter <= 0) errors.push('معدل الاستهلاك يجب أن يكون أكبر من صفر');
         if (errors.length) {
-          vehicleErrors.push(`ورقة السيارات، صف ${lineNumber}: ${errors.join('، ')}`);
-          return;
+          throw new Error(`ورقة السيارات، صف ${lineNumber}: ${errors.join('، ')}`);
         }
-        importedVehicles.set(vehicleId, {
+        importedVehicles.set(existing.id, {
           ...existing, plate, name, driver, openingOdometer, kmPerLiter,
         });
-      });
-      if (vehicleErrors.length) throw new Error(`تعذر الاستيراد بسبب أخطاء في بيانات السيارات:\n${vehicleErrors.join('\n')}`);
-      const missingVehicleIds = data.vehicles.filter((vehicle) => !importedVehicles.has(vehicle.id)).map((vehicle) => vehicle.plate);
-      if (missingVehicleIds.length) throw new Error(`القالب لا يحتوي على بيانات هذه السيارات: ${missingVehicleIds.join('، ')}`);
+      }
+      const missingVehicle = data.vehicles.find((vehicle) => !importedVehicles.has(vehicle.id));
+      if (missingVehicle) throw new Error(`القالب لا يحتوي على بيانات السيارة ذات اللوحة ${missingVehicle.plate}`);
 
       const existingEntriesById = new Map(data.entries.map((entry) => [entry.id, entry]));
       const seenEntryIds = new Set<string>();
       const importedEntries: FuelEntry[] = [];
-      const entryErrors: string[] = [];
       let skippedRows = 0;
       const vehicleSheets = workbook.worksheets.filter((sheet) => sheet !== vehicleSheet);
       const seenSheetVehicleIds = new Set<string>();
-      vehicleSheets.forEach((sheet) => {
+      for (const sheet of vehicleSheets) {
         const rows = worksheetToRows(sheet);
         const metadata = rows[1] || [];
-        const vehicleId = metadata[1]?.trim() || '';
         const plate = metadata[3]?.trim() || '';
-        const vehicle = importedVehicles.get(vehicleId);
-        const existingVehicle = vehiclesById.get(vehicleId);
-        if (metadata[0]?.trim() !== 'معرف السيارة' || normalizeTemplateHeader(metadata[2] || '') !== 'رقم اللوحة'
-          || !vehicle || !existingVehicle
-          || plate.toLocaleLowerCase('ar-EG') !== existingVehicle.plate.trim().toLocaleLowerCase('ar-EG')) {
-          entryErrors.push(`ورقة «${sheet.name}»: بيانات تعريف السيارة غير صحيحة أو لا تطابق ورقة بيانات السيارات`);
-          return;
+        const existingVehicle = vehiclesByPlate.get(normalizePlate(plate));
+        const vehicleId = existingVehicle?.id || '';
+        const vehicle = vehicleId ? importedVehicles.get(vehicleId) : undefined;
+        if (normalizeTemplateHeader(metadata[2] || '') !== 'رقم اللوحة' || !plate || !vehicle || !existingVehicle) {
+          throw new Error(`ورقة «${sheet.name}»: رقم اللوحة غير صحيح أو لا يطابق ورقة بيانات السيارات`);
         }
         if (seenSheetVehicleIds.has(vehicleId)) {
-          entryErrors.push(`ورقة «${sheet.name}»: يوجد أكثر من ورقة للسيارة نفسها`);
-          return;
+          throw new Error(`ورقة «${sheet.name}»: يوجد أكثر من ورقة للسيارة نفسها`);
         }
         seenSheetVehicleIds.add(vehicleId);
 
-        const entryHeaderIndex = rows.findIndex((row) => row.includes('معرف السيارة') && row.includes('معرف الحركة'));
+        const entryHeaderIndex = rows.findIndex((row) => {
+          const headers = normalizeTemplateHeaders(row);
+          return headers.includes('معرف الحركة') && headers.includes('التاريخ');
+        });
         if (entryHeaderIndex < 0) {
-          entryErrors.push(`ورقة «${sheet.name}»: لم أجد عناوين سجل الحركات`);
-          return;
+          throw new Error(`ورقة «${sheet.name}»: لم أجد عناوين سجل الحركات`);
         }
         const entryHeaders = normalizeTemplateHeaders(rows[entryHeaderIndex]);
         const missingEntryHeaders = requiredEntryHeaders.filter((header) => !entryHeaders.includes(header));
         if (missingEntryHeaders.length) {
-          entryErrors.push(`ورقة «${sheet.name}»: الأعمدة الناقصة ${missingEntryHeaders.join('، ')}`);
-          return;
+          throw new Error(`ورقة «${sheet.name}»: الأعمدة الناقصة ${missingEntryHeaders.join('، ')}`);
         }
         const column = (header: string) => entryHeaders.indexOf(header);
-        rows.slice(entryHeaderIndex + 1).forEach((row, index) => {
+        for (const [index, row] of rows.slice(entryHeaderIndex + 1).entries()) {
           const value = (header: string) => (row[column(header)] || '').trim();
           const dateText = value('التاريخ');
           const startText = value('القراءة السابقة');
@@ -2849,18 +2901,17 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             'القراءة الحالية', 'مصروف الوقود الفعلي (جنيه)', 'التفصيل',
             ...expenseFields.map((field) => `${field.label} (جنيه)`),
           ].some((header) => value(header) !== '');
-          if (!hasMovementData) return;
+          if (!hasMovementData) continue;
           if (!dateText || !startText || !currentText) {
             skippedRows += 1;
-            return;
+            continue;
           }
           const lineNumber = index + entryHeaderIndex + 2;
-          const rowVehicleId = value('معرف السيارة');
-          const rowVehicle = importedVehicles.get(rowVehicleId);
+          const rowVehicleId = vehicleId;
+          const rowVehicle = vehicle;
           const rowPlate = value('رقم اللوحة');
           const errors: string[] = [];
-          if (rowVehicleId !== vehicleId || !rowVehicle) errors.push('معرف السيارة لا يطابق هذه الورقة');
-          else if (rowPlate.trim().toLocaleLowerCase('ar-EG') !== rowVehicle.plate.trim().toLocaleLowerCase('ar-EG')) errors.push('رقم اللوحة لا يطابق معرف السيارة');
+          if (rowPlate && normalizePlate(rowPlate) !== normalizePlate(rowVehicle.plate)) errors.push('رقم اللوحة لا تطابق هذه الورقة');
           const date = normalizeTemplateDate(dateText);
           if (!date) errors.push('التاريخ غير صحيح');
           const start = parseTemplateNumber(startText);
@@ -2883,8 +2934,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
           if (!value('رقم المستند') && !oldEntry?.documentNumber) errors.push('رقم المستند مطلوب');
           if (suppliedId && seenEntryIds.has(suppliedId)) errors.push('معرف الحركة مكرر داخل الملف');
           if (errors.length) {
-            entryErrors.push(`ورقة «${sheet.name}»، صف ${lineNumber}: ${errors.join('، ')}`);
-            return;
+            throw new Error(`ورقة «${sheet.name}»، صف ${lineNumber}: ${errors.join('، ')}`);
           }
           if (suppliedId) seenEntryIds.add(suppliedId);
           const id = oldEntry ? suppliedId : `e${Date.now()}-${lineNumber}-${rowVehicleId}`;
@@ -2898,11 +2948,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             allowanceValue: allowanceCost(liters, allowancePricePerLiter), expenses, note: value('التفصيل'),
             documentNumber: value('رقم المستند') || oldEntry?.documentNumber || '',
           });
-        });
-      });
-      const missingVehicleSheets = data.vehicles.filter((vehicle) => !seenSheetVehicleIds.has(vehicle.id)).map((vehicle) => vehicle.plate);
-      if (missingVehicleSheets.length) entryErrors.push(`القالب لا يحتوي على ورقة مستقلة لهذه السيارات: ${missingVehicleSheets.join('، ')}`);
-      if (entryErrors.length) throw new Error(`تعذر الاستيراد بسبب أخطاء في الحركات:\n${entryErrors.join('\n')}`);
+        }
+      }
+      const missingVehicleSheet = data.vehicles.find((vehicle) => !seenSheetVehicleIds.has(vehicle.id));
+      if (missingVehicleSheet) throw new Error(`القالب لا يحتوي على ورقة مستقلة للسيارة ذات اللوحة ${missingVehicleSheet.plate}`);
 
       const importedById = new Map(importedEntries.map((entry) => [entry.id, entry]));
       const currentEntryIds = new Set(data.entries.map((entry) => entry.id));
@@ -2922,18 +2971,6 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         else localStorage.setItem(STORAGE_KEY, previousLocalData);
         throw new Error(`فشل حفظ الاستيراد في السحابة ولم تُعتمد التغييرات: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
       }
-      importedVehicles.forEach((vehicle, id) => {
-        const original = vehiclesById.get(id);
-        if (original && JSON.stringify(original) !== JSON.stringify(vehicle)) {
-          recordAudit('edit', `السيارة ${vehicle.plate} (${vehicle.name})`);
-        }
-      });
-      importedEntries.forEach((entry) => {
-        const original = existingEntriesById.get(entry.id);
-        if (!original || JSON.stringify(original) === JSON.stringify(entry)) return;
-        const vehicle = importedVehicles.get(entry.vehicleId);
-        recordAudit('edit', `تعبئة ${entry.documentNumber} للسيارة ${vehicle?.plate ?? ''} بتاريخ ${formatDateArabic(entry.date)}`);
-      });
       setData(nextData);
       setNoticeIsError(false);
       setNotice(`تم استيراد ${importedVehicles.size} سيارة و${importedEntries.length} حركة. تم تخطي ${skippedRows} صفوف غير مكتملة. تم ربط كل حركة بمعرف السيارة ورقم لوحتها.`);
@@ -2991,29 +3028,15 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
 
     const sheet = workbook.addWorksheet('سجل السيارة', { views: [{ rightToLeft: true, showGridLines: false, state: 'frozen', ySplit: 4, xSplit: 3 }] });
     const headers = [
-      'معرف الحركة', 'اللوحة', 'السيارة', 'رقم المستند', 'التاريخ', 'السائق', 'المسار',
-      'قراءة سابقة', 'قراءة حالية', 'الفجوة (كم)', 'اللترات',
-      'التموين المقرر', 'التموين الفعلي',
-      'الانحراف', 'كم/لتر',
-      ...expenseFields.map((field) => compactExpenseHeaders[field.key]), 'ملاحظات', 'الإجمالي',
+      'معرف الحركة', 'رقم اللوحة', 'اسم السيارة', 'رقم المستند', 'التاريخ', 'اسم السائق', 'خط السير',
+      'القراءة السابقة', 'القراءة الحالية', 'مصروف الوقود الفعلي (جنيه)',
+      ...expenseFields.map((field) => `${field.label} (جنيه)`), 'التفصيل',
     ];
     const hiddenColumns = new Set([1, 2, 3, 10, 11, 12, 14, 15, headers.length]);
     const inputColumns = new Set([4, 5, 6, 7, 8, 9, 13, 16 + expenseFields.length]);
     expenseFields.forEach((_, index) => inputColumns.add(16 + index));
     sheet.columns = [12, 17, 22, 18, 15, 20, 25, 17, 17, 15, 20, 24, 24, 20, 19, ...expenseFields.map(() => 17), 26, 26]
       .map((width, index) => ({ width, hidden: hiddenColumns.has(index + 1) }));
-    sheet.mergeCells(1, 1, 1, headers.length);
-    sheet.getCell(1, 1).value = `كشف الحركة والمصاريف - ${selectedSummary.vehicle.name} (${selectedSummary.vehicle.plate})`;
-    sheet.getCell(1, 1).font = { name: 'Arial', size: 15, bold: true, color: { argb: 'FFFFFFFF' } };
-    sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF176B64' } };
-    sheet.getCell(1, 1).alignment = { horizontal: 'center', vertical: 'middle' };
-    sheet.getRow(1).height = 34;
-    sheet.mergeCells(2, 1, 2, headers.length);
-    sheet.getCell(2, 1).value = 'املأ الخانات الظاهرة ذات الخلفية الفاتحة. الأعمدة المخفية والرمادية محفوظة للقالب أو محسوبة تلقائيًا؛ اتركها كما هي عند إعادة الاستيراد.';
-    sheet.getCell(2, 1).font = { name: 'Arial', size: 10, italic: true, color: { argb: 'FF52675E' } };
-    sheet.getCell(2, 1).alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
-    sheet.getRow(2).height = 28;
-    sheet.addRow([]);
     const headerRow = sheet.addRow(headers);
     headerRow.height = 42;
     headerRow.eachCell((cell) => {
@@ -3114,7 +3137,12 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       } else {
         rows = parseCsvRows(await file.text());
       }
-      const headerRowIndex = rows.findIndex((row) => row.some((value) => value.trim() === 'معرف الحركة'));
+      const headerRowIndex = rows.findIndex((row) => {
+        const normalized = normalizeTemplateHeaders(row);
+        return normalized.includes('معرف الحركة')
+          && normalized.includes('رقم اللوحة')
+          && normalized.includes('التاريخ');
+      });
       if (headerRowIndex < 0) throw new Error('لم أجد صف عناوين قالب الحركات.');
       const headers = normalizeTemplateHeaders(rows[headerRowIndex]);
       const required = [
@@ -3256,14 +3284,6 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         else localStorage.setItem(STORAGE_KEY, previousLocalData);
         throw new Error(`فشل حفظ الاستيراد في السحابة ولم تُعتمد التغييرات: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
       }
-      if (JSON.stringify(vehicle) !== JSON.stringify(importedVehicle)) {
-        recordAudit('edit', `السيارة ${importedVehicle.plate} (${importedVehicle.name})`);
-      }
-      imported.forEach((entry) => {
-        const original = oldEntries.find((item) => item.id === entry.id);
-        if (!original || JSON.stringify(original) === JSON.stringify(entry)) return;
-        recordAudit('edit', `تعبئة ${entry.documentNumber} للسيارة ${vehicle.plate} بتاريخ ${formatDateArabic(entry.date)}`);
-      });
       setData(nextData);
       const movementNotice = imported.length
         ? `تحديث ${updatedCount} حركة وإضافة ${addedCount}`
@@ -3483,20 +3503,32 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   };
 
   const clearAllEntries = async () => {
-    if (!canEditFleet || !cloudLoaded || isClearingAllEntries) return;
+    if (!canEditFleet || !isClearEntriesPasswordValid || !cloudLoaded || isClearingAllEntries) return;
+    if (clearEntriesMode === 'month' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(clearEntriesMonth)) return;
     if (!isFirebaseConfigured || !firestore) {
       setNoticeIsError(true);
       setNotice('تعذر مسح الحركات من Firestore لأن الاتصال غير مُعد.');
       return;
     }
-    if (latestFleetDataRef.current.entries.length === 0) {
+    const currentData = latestFleetDataRef.current;
+    const entriesToDelete = clearEntriesMode === 'all'
+      ? currentData.entries
+      : currentData.entries.filter((entry) => entry.date.slice(0, 7) === clearEntriesMonth);
+    if (entriesToDelete.length === 0) {
       setIsClearEntriesConfirmationOpen(false);
+      setClearEntriesConfirmationPassword('');
+      setIsClearEntriesMonthPickerOpen(false);
+      setNoticeIsError(false);
+      setNotice(clearEntriesMode === 'all' ? 'لا توجد حركات لمسحها.' : 'لا توجد حركات مسجلة في الشهر المحدد.');
       return;
     }
 
     setIsClearingAllEntries(true);
-    const currentData = latestFleetDataRef.current;
-    const nextData: FleetData = { ...currentData, entries: [] };
+    const deletedIds = new Set(entriesToDelete.map((entry) => entry.id));
+    const nextData: FleetData = {
+      ...currentData,
+      entries: currentData.entries.filter((entry) => !deletedIds.has(entry.id)),
+    };
     let previousLocalData: string | null = null;
     let localDataUpdated = false;
     try {
@@ -3509,8 +3541,17 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       setPendingDeleteEntry(null);
       setDeleteConfirmationText('');
       setIsClearEntriesConfirmationOpen(false);
-      recordAudit('delete', `مسح جميع سجلات التعبئة (${currentData.entries.length} حركة)`);
-      setNotice('تم مسح كل الحركات مع الاحتفاظ ببيانات السيارات وإعدادات السعر');
+      setClearEntriesConfirmationPassword('');
+      setIsClearEntriesMonthPickerOpen(false);
+      recordAudit(
+        'delete',
+        clearEntriesMode === 'all'
+          ? `مسح جميع سجلات التعبئة (${entriesToDelete.length} حركة)`
+          : `مسح سجلات التعبئة لشهر ${deviationMonthDisplayName(clearEntriesMonth)} (${entriesToDelete.length} حركة)`,
+      );
+      setNotice(clearEntriesMode === 'all'
+        ? 'تم مسح كل الحركات مع الاحتفاظ ببيانات السيارات وإعدادات السعر'
+        : `تم مسح ${entriesToDelete.length} حركة لشهر ${deviationMonthDisplayName(clearEntriesMonth)} مع الاحتفاظ بباقي الحركات والسيارات وإعدادات السعر`);
       setNoticeIsError(false);
     } catch (error) {
       console.error('Could not clear all fuel entries', error);
@@ -3737,9 +3778,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       </div>}
       <header className="fleet-header">
         <div className="fleet-quick-nav-anchor" ref={quickNavRef}>
-          <button className="fleet-brand fleet-brand-button" type="button" aria-expanded={window.matchMedia('(min-width: 769px)').matches ? isQuickNavOpen : undefined} aria-haspopup={window.matchMedia('(min-width: 769px)').matches ? 'menu' : undefined} onClick={() => { if (window.matchMedia('(min-width: 769px)').matches) setIsQuickNavOpen((open) => !open); }} aria-label="Abu Ghali Muraqabat">
+          <button className="fleet-brand fleet-brand-button" type="button" aria-expanded={window.matchMedia('(min-width: 769px)').matches ? isQuickNavOpen : undefined} aria-haspopup={window.matchMedia('(min-width: 769px)').matches ? 'menu' : undefined} onClick={() => { if (window.matchMedia('(min-width: 769px)').matches) setIsQuickNavOpen((open) => !open); }} aria-label="Abou Ghaly Muraqabat">
             <span className="fleet-brand-mark"><img src="/icon-speedometer.svg" alt="" /></span>
-            <span className="fleet-brand-copy"><strong>Abu Ghali</strong><small>Muraqabat</small></span>
+            <span className="fleet-brand-copy"><strong>Abou Ghaly</strong><small>Muraqabat</small></span>
           </button>
           {isQuickNavOpen && <nav className="fleet-quick-nav" aria-label="اختيار القسم" role="menu">
             <button type="button" className={tab === 'home' ? 'is-active' : ''} role="menuitem" onClick={() => { setTab('home'); setSelectedVehicleId(null); setIsQuickNavOpen(false); }}><Home aria-hidden="true" /><span>الرئيسية</span></button>
@@ -3979,53 +4020,119 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
 
       {tab === 'routes' && <section className="fleet-section route-tracking-section">
         <div className="route-section-heading">
-          <div><span className="fleet-overline">متابعة التشغيل اليومي</span><h2>خط سير السيارات اليومي</h2><p>سجل مستقل لتحركات السيارات، على نفس ترتيب كشف Excel اليومي.</p></div>
-          <div className="route-section-count"><strong>{numberFormat.format(routeEntriesForDate.length)}</strong><span>خط سير في هذا اليوم</span></div>
+          <div><span className="fleet-overline">بيان حركة السيارات</span><h2>خط سير السيارات اليومي</h2></div>
+          <div className="route-section-count"><strong>{numberFormat.format(savedRouteVehicleCount)} / {numberFormat.format(routeBoardVehicles.length)}</strong><span>سيارة محفوظة في هذا اليوم</span></div>
         </div>
         {!routesCloudLoaded
           ? <div className="route-storage-status" role="status">جاري تحميل سجلات خطوط السير...</div>
           : (!routesCloudAvailable || !isFirebaseConfigured) && <div className="route-storage-status" role="status">{routesCloudAvailable ? 'السجلات محفوظة على هذا الجهاز فقط؛ المزامنة السحابية غير مفعلة.' : 'تعذر الاتصال بسجل خط السير السحابي؛ السجلات الحالية محفوظة على هذا الجهاز فقط.'}</div>}
         {!canEditFleet && <div className="fleet-user-permission-note">يمكنك مشاهدة سجلات خط السير. التعديل والإضافة متاحان للمسؤول فقط.</div>}
 
-        {canEditFleet && <form className="route-entry-form" onSubmit={saveRouteEntry}>
-          <div className="route-form-heading"><span className="route-form-icon"><MapPinned aria-hidden="true" /></span><div><h3>{editingRouteId ? 'تعديل خط السير' : 'تسجيل خط سير جديد'}</h3><p>بيانات هذا القسم محفوظة بشكل مستقل عن سجل السيارات والوقود.</p></div></div>
-          <div className="route-form-grid">
-            <label><span>التاريخ <i>*</i></span><input type="date" lang="ar" dir="rtl" required value={routeForm.date} onChange={(event) => setRouteForm((current) => ({ ...current, date: event.target.value }))} /></label>
-            <label><span>رقم السيارة <i>*</i></span><select required value={routeForm.vehicleId} onChange={(event) => handleRouteVehicleChange(event.target.value)}><option value="">اختر سيارة</option>{data.vehicles.map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.plate} · {vehicle.name}</option>)}<option value="other">سيارة إيجار / أخرى</option></select></label>
-            {routeForm.vehicleId === 'other' && <>
-              <label><span>وصف السيارة <i>*</i></span><input required value={routeForm.vehicleName} onChange={(event) => setRouteForm((current) => ({ ...current, vehicleName: event.target.value }))} placeholder="مثال: جامبو أو ديماكس" /></label>
-              <label><span>رقم السيارة <i>*</i></span><input required value={routeForm.plate} onChange={(event) => setRouteForm((current) => ({ ...current, plate: event.target.value }))} placeholder="رقم اللوحة أو إيجار" /></label>
-            </>}
-            <label><span>نقطة الانطلاق <i>*</i></span><input required value={routeForm.departure} onChange={(event) => setRouteForm((current) => ({ ...current, departure: event.target.value }))} placeholder="اكتب المكان أو وقت التحرك" /><div className="route-location-actions"><button className="route-gps-button" type="button" onClick={() => useCurrentLocation('departure')} disabled={locatingRouteField !== null}><LocateFixed aria-hidden="true" />{locatingRouteField === 'departure' ? 'جارٍ تحديد الموقع...' : 'موقعي الحالي GPS'}</button><button className="route-gps-button" type="button" onClick={() => setRouteMapField('departure')}><MapPinned aria-hidden="true" />اختيار من الخريطة</button></div></label>
-            <label><span>خط السير / الوجهة <i>*</i></span><input required value={routeForm.route} onChange={(event) => setRouteForm((current) => ({ ...current, route: event.target.value }))} placeholder="اكتب الوجهة أو تفاصيل خط السير" /><div className="route-location-actions"><button className="route-gps-button" type="button" onClick={() => useCurrentLocation('route')} disabled={locatingRouteField !== null}><LocateFixed aria-hidden="true" />{locatingRouteField === 'route' ? 'جارٍ تحديد الموقع...' : 'موقعي الحالي GPS'}</button><button className="route-gps-button" type="button" onClick={() => setRouteMapField('route')}><MapPinned aria-hidden="true" />اختيار من الخريطة</button></div></label>
-            <label><span>المندوب</span><input value={routeForm.representative} onChange={(event) => setRouteForm((current) => ({ ...current, representative: event.target.value }))} placeholder="اسم المندوب" /></label>
-            <label><span>السائق <i>*</i></span><input required value={routeForm.driver} onChange={(event) => setRouteForm((current) => ({ ...current, driver: event.target.value }))} placeholder="اسم السائق" /></label>
-          </div>
-          <div className="route-form-actions"><button className="fleet-button fleet-button-primary" type="submit" disabled={!routesCloudLoaded}><Plus aria-hidden="true" />{editingRouteId ? 'حفظ التعديل' : 'إضافة خط السير'}</button>{editingRouteId && <button className="fleet-button fleet-button-light" type="button" onClick={() => { setEditingRouteId(null); setRouteForm(createEmptyRouteForm()); }}>إلغاء التعديل</button>}</div>
-        </form>}
-
         <section className="route-daily-sheet" aria-label="كشف خطوط السير">
           <div className="route-daily-toolbar">
-            <div><span className="fleet-overline">كشف اليوم</span><h3>سجل تحركات السيارات</h3></div>
-            <label className="route-date-filter"><span>تاريخ الكشف</span><input type="date" lang="ar" dir="rtl" value={routeDateFilter} onChange={(event) => setRouteDateFilter(event.target.value)} /></label>
-            <button className="fleet-button fleet-button-light route-export-button" type="button" onClick={() => void exportRouteEntries()} disabled={isExportingRoutes || routeEntriesForDate.length === 0}><Download aria-hidden="true" />{isExportingRoutes ? 'جاري تجهيز Excel...' : 'تصدير إلى Excel'}</button>
+            <div><span className="fleet-overline">بيان اليوم</span><h3>حركة السيارات المسجلة</h3></div>
+            {canEditFleet && <button type="button" className="fleet-button fleet-button-primary route-add-vehicle-button" onClick={() => {
+              setRouteVehicleDialog({ vehicleId: null, isDailyOnly: true, plate: '', name: '' });
+              setRouteVehicleDialogError('');
+            }}><Plus size={16} aria-hidden="true" /> إضافة سيارة للبيان</button>}
+            <label className="route-date-filter">
+              <span>تاريخ البيان</span>
+              <div className="entry-date-input-wrap route-date-input-wrap">
+                <input type="text" inputMode="numeric" dir="ltr" maxLength={10} placeholder="يوم/شهر/سنة" autoComplete="off" value={routeDateFilterDraft} aria-label="تاريخ البيان، يوم شهر سنة" onChange={(event) => {
+                  const value = event.target.value;
+                  const parsedDate = parseDriverSettlementDate(value);
+                  setRouteDateFilterDraft(value);
+                  if (parsedDate) setRouteDateFilter(parsedDate);
+                }} onBlur={() => {
+                  const parsedDate = parseDriverSettlementDate(routeDateFilterDraft);
+                  if (parsedDate) setRouteDateFilterDraft(formatEntryDateInput(parsedDate));
+                }} />
+                <button type="button" className="entry-date-picker-button" aria-label="اختيار تاريخ البيان من التقويم" title="اختيار تاريخ البيان من التقويم" onClick={() => {
+                  const picker = routeDatePickerRef.current;
+                  if (!picker) return;
+                  if (typeof picker.showPicker === 'function') picker.showPicker();
+                  else {
+                    picker.focus();
+                    picker.click();
+                  }
+                }}><CalendarDays size={18} aria-hidden="true" /></button>
+                <input ref={routeDatePickerRef} className="entry-date-native-picker" type="date" aria-label="تقويم تاريخ البيان" tabIndex={-1} value={routeDateFilter} onChange={(event) => {
+                  if (!event.target.value) return;
+                  setRouteDateFilter(event.target.value);
+                  setRouteDateFilterDraft(formatEntryDateInput(event.target.value));
+                }} />
+              </div>
+            </label>
           </div>
-          {routeEntriesForDate.length === 0 ? <div className="fleet-empty-state route-empty-state"><MapPinned aria-hidden="true" /><strong>لا توجد خطوط سير مسجلة لهذا اليوم</strong><span>اختر تاريخًا آخر أو أضف أول خط سير من النموذج أعلاه.</span></div> : <div className="fleet-table-wrap route-table-wrap">
-            <table className="fleet-table route-table">
-              <thead><tr><th>م</th><th>الوصف</th><th>رقم السيارة</th><th>نقطة الانطلاق</th><th>خط السير</th><th>المندوب</th><th>السائق</th>{canEditFleet && <th>إجراءات</th>}</tr></thead>
-              <tbody>{routeEntriesForDate.map((entry, index) => <tr key={entry.id}>
-                <td className="ledger-index">{numberFormat.format(index + 1)}</td>
-                <td><strong>{entry.vehicleName}</strong></td>
-                <td className="ledger-plate">{entry.plate}</td>
-                <td>{entry.departure}</td>
-                <td>{entry.route}</td>
-                <td>{entry.representative || '—'}</td>
-                <td>{entry.driver}</td>
-                {canEditFleet && <td><div className="route-row-actions"><button type="button" aria-label={`تعديل خط سير ${entry.plate}`} title="تعديل" onClick={() => editRouteEntry(entry)}><Pencil aria-hidden="true" /></button><button type="button" aria-label={`حذف خط سير ${entry.plate}`} title="حذف" onClick={() => deleteRouteEntry(entry)}><Trash2 aria-hidden="true" /></button></div></td>}
-              </tr>)}</tbody>
-            </table>
+          {routeDateFilterInvalid && <p className="route-date-error" role="alert">أدخل تاريخًا صحيحًا بصيغة يوم/شهر/سنة.</p>}
+          {routeBoardVehicles.length === 0 ? <div className="fleet-empty-state route-empty-state"><MapPinned aria-hidden="true" /><strong>لا توجد سيارات مسجلة لعرض البيان</strong></div> : <div className="route-daily-cards">
+            {routeBoardVehicles.map((vehicle) => {
+                const entry = routeEntriesForDate.find((item) => !item.isDailyVehicle && (
+                  vehicle.fleetVehicleId
+                    ? item.vehicleId === vehicle.fleetVehicleId
+                    : item.dailyVehicleId === vehicle.id || (!item.vehicleId && item.plate.trim() === vehicle.plate.trim())
+                ));
+                const key = `${routeDateFilter}|${vehicle.id}`;
+                const draft = routeDailyDrafts[key] || {
+                  departure: entry?.departure || '',
+                  route: entry?.route || '',
+                  representative: entry?.representative || '',
+                  driver: entry?.driver || '',
+                };
+                const updateDraft = (field: keyof RouteDailyDraft, value: string) => setRouteDailyDrafts((current) => ({
+                  ...current,
+                  [key]: { ...(current[key] || draft), [field]: value },
+                }));
+                const isExpanded = expandedRouteVehicleIds.has(vehicle.id);
+                const panelId = `route-daily-fields-${vehicle.id}`;
+                return <article className={`route-daily-card${isExpanded ? ' is-expanded' : ''}`} key={vehicle.id}>
+                  <header className="route-daily-card-header">
+                  <button type="button" className="route-daily-card-toggle" aria-expanded={isExpanded} aria-controls={panelId} onClick={() => setExpandedRouteVehicleIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(vehicle.id)) next.delete(vehicle.id);
+                    else next.add(vehicle.id);
+                    return next;
+                  })}>
+                    <span className="route-daily-card-vehicle"><strong dir="auto">{vehicle.plate}</strong><span>{vehicle.name}</span></span>
+                    <ChevronDown className="route-daily-card-chevron" size={19} aria-hidden="true" />
+                  </button>
+                  {canEditFleet && <button type="button" className="route-daily-card-edit" aria-label={`تعديل بيانات ${vehicle.plate} في البيان فقط`} title="تعديل الاسم والوصف في البيان فقط" onClick={() => {
+                    setRouteVehicleDialog({ vehicleId: vehicle.id, isDailyOnly: vehicle.isDailyOnly, plate: vehicle.plate, name: vehicle.name });
+                    setRouteVehicleDialogError('');
+                  }}><Pencil size={14} aria-hidden="true" /></button>}
+                  </header>
+                  {isExpanded && <div className="route-daily-card-content" id={panelId}>
+                    <div className="route-daily-card-fields">
+                      <label><span>السائق</span>{canEditFleet ? <input className="route-daily-input" aria-label={`السائق لسيارة ${vehicle.plate}`} value={draft.driver} onChange={(event) => updateDraft('driver', event.target.value)} /> : <strong>{draft.driver || '—'}</strong>}</label>
+                      <label><span>نقطة الانطلاق</span>{canEditFleet ? <div className="route-daily-location-field"><input className="route-daily-input" aria-label={`نقطة الانطلاق لسيارة ${vehicle.plate}`} value={draft.departure} onChange={(event) => updateDraft('departure', event.target.value)} /><button type="button" aria-label={`فتح الخريطة لنقطة الانطلاق ${vehicle.plate}`} title="فتح في خرائط Google" onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.departure)}`, '_blank', 'noopener,noreferrer')}><MapPin size={16} aria-hidden="true" /></button></div> : <strong>{draft.departure || '—'}</strong>}</label>
+                      <label><span>خط السير</span>{canEditFleet ? <div className="route-daily-location-field"><input className="route-daily-input" aria-label={`خط السير لسيارة ${vehicle.plate}`} value={draft.route} onChange={(event) => updateDraft('route', event.target.value)} /><button type="button" aria-label={`فتح الخريطة لخط سير ${vehicle.plate}`} title="فتح في خرائط Google" onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.route)}`, '_blank', 'noopener,noreferrer')}><MapPin size={16} aria-hidden="true" /></button></div> : <strong>{draft.route || '—'}</strong>}</label>
+                      <label><span>المندوب</span>{canEditFleet ? <input className="route-daily-input" aria-label={`المندوب لسيارة ${vehicle.plate}`} value={draft.representative} onChange={(event) => updateDraft('representative', event.target.value)} /> : <strong>{draft.representative || '—'}</strong>}</label>
+                    </div>
+                    {canEditFleet && <button type="button" className="fleet-button fleet-button-primary route-daily-save" disabled={!routesCloudLoaded || routeDateFilterInvalid || savingRouteVehicleIds.has(vehicle.id)} onClick={() => void saveRouteVehicle(vehicle)}>{savingRouteVehicleIds.has(vehicle.id) ? 'جارٍ الحفظ...' : 'حفظ'}</button>}
+                  </div>}
+                </article>;
+              })}
           </div>}
+          <div className="route-export-footer">
+            <button className="fleet-button fleet-button-light route-export-button" type="button" onClick={() => void exportRouteEntries()} disabled={isExportingRoutes || routeDateFilterInvalid || !routeBoardVehicles.length}><Download aria-hidden="true" />{isExportingRoutes ? 'جاري تجهيز Excel...' : 'تصدير إلى Excel'}</button>
+          </div>
         </section>
+        {routeVehicleDialog && canEditFleet && <div className="fleet-modal-backdrop route-vehicle-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRouteVehicleDialog(null)}>
+          <form className="fleet-modal route-vehicle-modal" onSubmit={saveRouteVehicleMetadata} role="dialog" aria-modal="true" aria-labelledby="route-vehicle-dialog-title">
+            <div className="fleet-modal-title">
+              <div><span className="fleet-overline">بيان حركة السيارات</span><h2 id="route-vehicle-dialog-title">{routeVehicleDialog.vehicleId ? 'تعديل سيارة في البيان' : 'إضافة سيارة للبيان'}</h2></div>
+              <button type="button" aria-label="إغلاق" onClick={() => setRouteVehicleDialog(null)}>×</button>
+            </div>
+            <p className="route-vehicle-modal-note">التعديلات هنا خاصة ببيان الحركة اليومي ولا تغيّر سجل السيارات في بقية التطبيق.</p>
+            <label>رقم السيارة<input autoFocus required maxLength={80} value={routeVehicleDialog.plate} onChange={(event) => setRouteVehicleDialog((current) => current ? { ...current, plate: event.target.value } : current)} /></label>
+            <label>الوصف / المنطقة<input required maxLength={100} value={routeVehicleDialog.name} onChange={(event) => setRouteVehicleDialog((current) => current ? { ...current, name: event.target.value } : current)} placeholder="مثال: دمياط" /></label>
+            {routeVehicleDialogError && <p className="route-vehicle-modal-error" role="alert">{routeVehicleDialogError}</p>}
+            <div className="fleet-user-edit-actions">
+              <button className="fleet-button fleet-button-primary" type="submit">{routeVehicleDialog.vehicleId ? 'حفظ التعديل' : 'إضافة للبيان'}</button>
+              <button className="fleet-button fleet-button-light" type="button" onClick={() => setRouteVehicleDialog(null)}>إلغاء</button>
+            </div>
+          </form>
+        </div>}
         <section className="route-daily-sheet" aria-label="سجلات GPS">
           <div className="route-daily-toolbar">
             <div><span className="fleet-overline">سجلات الموقع</span><h3>سجلات GPS</h3></div>
@@ -4053,13 +4160,12 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                     })}</tbody>
                   </table>
                 </div>}
-          {!isLoadingGpsLogs && hasMoreGpsLogs && <div className="route-form-actions">
+          {!isLoadingGpsLogs && hasMoreGpsLogs && <div className="route-load-more">
             <button className="fleet-button fleet-button-light" type="button" onClick={() => void loadOlderGpsLogs()} disabled={isLoadingMoreGpsLogs}>
               {isLoadingMoreGpsLogs ? 'جاري تحميل السجلات...' : 'تحميل المزيد'}
             </button>
           </div>}
         </section>
-        {routeMapField && <RouteMapPicker initialCoordinate={routeMapInitialCoordinate(routeMapField)} onCancel={() => setRouteMapField(null)} onConfirm={(address) => setRouteMapAddress(routeMapField, address)} />}
       </section>}
 
       {tab === 'overview' && <>
@@ -4353,11 +4459,13 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       </>}
 
       {tab === 'vehicles' && <section className={`fleet-section${selectedSummary ? ' fleet-detail-page' : ''}`}>
-        {currentUser.role === 'admin' && <section className={`fleet-global-rate fleet-rate-compact${selectedSummary ? ` fleet-rate-collapsible${isRateCardExpanded ? ' is-expanded' : ' is-collapsed'}` : ''}`} aria-label="سعر التموين الموحد">
-          {selectedSummary && <button type="button" className="fleet-rate-collapse-toggle" aria-expanded={isRateCardExpanded} onClick={() => setIsRateCardExpanded((expanded) => !expanded)}>
+        {currentUser.role === 'admin' && <section className={`fleet-global-rate fleet-rate-compact fleet-rate-collapsible${isRateCardExpanded ? ' is-expanded' : ' is-collapsed'}`} aria-label="سعر التموين الموحد">
+          <button type="button" className="fleet-rate-collapse-toggle" aria-expanded={isRateCardExpanded} onClick={(event) => {
+            if (event.detail === 0 || event.detail > 1) setIsRateCardExpanded((expanded) => !expanded);
+          }}>
             <span>سعر اللتر المعتمد</span><strong>{rateFormat.format(fuelAllowanceRate(data))} <small>جنيه / لتر</small></strong><ChevronDown aria-hidden="true" />
-          </button>}
-          {(!selectedSummary || isRateCardExpanded) && <>
+          </button>
+          {isRateCardExpanded && <>
             <div><strong>سعر اللتر المعتمد</strong><span>يُطبق تلقائيًا على حسابات جميع السيارات</span></div>
             {canEditFleet
               ? !isRateEditorOpen
@@ -4394,33 +4502,33 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
               </div>
             </div>
             {canEditFleet && <div className="fleet-detail-actions">
-              <button className="fleet-button fleet-button-light fleet-detail-action-card fleet-detail-action-edit" type="button" title="تعديل السيارة" aria-label="تعديل السيارة" onClick={() => openVehicleEditor(selectedSummary.vehicle)}><Car size={23} aria-hidden="true" /><span>تعديل</span></button>
-              <button className="fleet-button fleet-button-light fleet-detail-action-card fleet-detail-action-download" type="button" title="تنزيل قالب السيارة" aria-label="تنزيل قالب السيارة" onClick={() => void downloadSelectedVehicleTemplate().catch((error: unknown) => setNotice(error instanceof Error ? `تعذر إنشاء قالب السيارة: ${error.message}` : 'تعذر إنشاء قالب السيارة.'))}><Download size={23} aria-hidden="true" /><span>تنزيل قالب</span></button>
-              <button className="fleet-button fleet-button-light fleet-detail-action-card fleet-detail-action-upload" type="button" title="استيراد بيانات السيارة" aria-label="استيراد بيانات السيارة" disabled={isImportingVehicleHistory} onClick={() => vehicleHistoryImportRef.current?.click()}><Upload size={23} aria-hidden="true" /><span>{isImportingVehicleHistory ? 'جاري الاستيراد' : 'استيراد'}</span></button>
+              <button className="fleet-button fleet-button-light fleet-icon-action fleet-detail-action-edit" type="button" title="تعديل السيارة" aria-label="تعديل السيارة" onClick={() => openVehicleEditor(selectedSummary.vehicle)}><Car size={15} aria-hidden="true" /></button>
+              <button className="fleet-button fleet-button-light fleet-icon-action fleet-detail-action-download" type="button" title="تنزيل قالب السيارة" aria-label="تنزيل قالب السيارة" onClick={() => void downloadSelectedVehicleTemplate().catch((error: unknown) => setNotice(error instanceof Error ? `تعذر إنشاء قالب السيارة: ${error.message}` : 'تعذر إنشاء قالب السيارة.'))}><Download size={15} aria-hidden="true" /></button>
+              <button className="fleet-button fleet-button-light fleet-icon-action fleet-detail-action-upload" type="button" title="استيراد بيانات السيارة" aria-label="استيراد بيانات السيارة" disabled={isImportingVehicleHistory} onClick={() => vehicleHistoryImportRef.current?.click()}><Upload size={15} aria-hidden="true" /></button>
               <input ref={vehicleHistoryImportRef} className="fleet-file-input" type="file" accept=".xlsx,.csv" aria-label="اختر قالب السيارة للاستيراد" onChange={importSelectedVehicleTemplate} />
-              <button className="fleet-button fleet-button-primary fleet-detail-action-card fleet-detail-action-entry" type="button" title="تسجيل تعبئة" aria-label="تسجيل تعبئة" onClick={startEntry}><Plus size={25} aria-hidden="true" /><span>تسجيل تعبئة</span></button>
+              <button className="fleet-button fleet-button-primary fleet-icon-action fleet-detail-action-entry" type="button" title="تسجيل تعبئة" aria-label="تسجيل تعبئة" onClick={startEntry}><Plus size={17} aria-hidden="true" /></button>
             </div>}
           </div>
           <section className={`fleet-rate-summary${isRateSummaryExpanded ? ' is-expanded' : ' is-collapsed'}`} aria-label="ملخص المعدلات">
             <button type="button" className="fleet-rate-summary-toggle" aria-expanded={isRateSummaryExpanded} onClick={() => setIsRateSummaryExpanded((expanded) => !expanded)}>
-              <span><Gauge aria-hidden="true" /> 📊 ملخص المعدلات</span>
+              <span><Gauge aria-hidden="true" /> 📊 ملخص المعدلات <small className="fleet-rate-summary-count">عدد الحركات: {numberFormat.format(selectedEntries.length)}</small></span>
               <ChevronDown aria-hidden="true" />
             </button>
             {isRateSummaryExpanded && <div className="fleet-rate-summary-content">
             <div className="fleet-rate-summary-grid">
               <article className="fleet-rate-summary-card">
                 <Gauge aria-hidden="true" />
-                <span>متوسط معدل الاستهلاك</span>
+                <span>متوسط الاستهلاك</span>
                 <strong>{rateFormat.format(selectedAverageRate)} <small>كم/لتر</small></strong>
               </article>
               <article className="fleet-rate-summary-card is-best">
                 <TrendingUp aria-hidden="true" />
-                <span>أفضل معدل</span>
+                <span>أفضل استهلاك</span>
                 <strong>{rateFormat.format(selectedBestRate)} <small>كم/لتر</small></strong>
               </article>
               <article className="fleet-rate-summary-card is-worst">
                 <TrendingDown aria-hidden="true" />
-                <span>أسوأ معدل</span>
+                <span>أسوأ استهلاك</span>
                 <strong>{rateFormat.format(selectedWorstRate)} <small>كم/لتر</small></strong>
               </article>
               <article className="fleet-rate-summary-card">
@@ -4430,13 +4538,13 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
               </article>
               <article className="fleet-rate-summary-card">
                 <Fuel aria-hidden="true" />
-                <span>إجمالي الوقود</span>
-                <strong>{numberFormat.format(selectedRateTotals.actualLiters)} <small>لتر فعلي</small></strong>
+                <span>إجمالي الوقود (لتر)</span>
+                <strong>{numberFormat.format(selectedRateTotals.actualLiters)}</strong>
               </article>
               <article className="fleet-rate-summary-card">
-                <Fuel aria-hidden="true" />
-                <span>عدد الحركات</span>
-                <strong>{numberFormat.format(selectedEntries.length)} <small>حركة</small></strong>
+                <Calculator aria-hidden="true" />
+                <span>مسافة الأساس</span>
+                <strong>{numberFormat.format(selectedCalculatedBaseDistance)} <small>كم</small></strong>
               </article>
             </div>
             <div className="fleet-rate-summary-insights">
@@ -4448,7 +4556,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                       <div className="fleet-rate-chart-item" key={entry.id} title={`${formatDateArabic(entry.date)}: ${rateFormat.format(rate)} كم/لتر`}>
                         <span className="fleet-rate-chart-value">{rateFormat.format(rate)}</span>
                         <span
-                          className={`fleet-rate-chart-bar ${rateCondition(rate).className}`}
+                          className={`fleet-rate-chart-bar ${rate > chartAverageRate ? 'is-good' : 'is-poor'}`}
                           style={{ '--rate-bar-height': `${Math.max(4, (rate / chartMaximumRate) * 100)}%` } as React.CSSProperties}
                         />
                         <span className="fleet-rate-chart-date">{entry.date.slice(5)}</span>
@@ -4463,8 +4571,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                   <div><span>هذا الشهر · حتى {formatDateArabic(currentPeriodEnd)}</span><strong>{rateFormat.format(currentMonthRateSummary.rate)} <small>كم/لتر</small></strong></div>
                   <div><span>الشهر الماضي · حتى {formatDateArabic(previousPeriodEnd)}</span><strong>{rateFormat.format(previousMonthRateSummary.rate)} <small>كم/لتر</small></strong></div>
                 </div>
-                <p className={monthlyRateChange === null ? 'is-unavailable' : monthlyRateChange > 0 ? 'is-improved' : monthlyRateChange < 0 ? 'is-declined' : 'is-unchanged'}>
-                  {monthlyRateChange === null
+                <p className={currentMonthRateSummary.rate === 0 ? 'is-unavailable' : monthlyRateChange === null ? 'is-unavailable' : monthlyRateChange > 0 ? 'is-improved' : monthlyRateChange < 0 ? 'is-declined' : 'is-unchanged'}>
+                  {currentMonthRateSummary.rate === 0
+                    ? 'لا توجد حركات مسجلة لهذا الشهر'
+                    : monthlyRateChange === null
                     ? 'لا توجد بيانات كافية للمقارنة'
                     : monthlyRateChange > 0
                       ? `تحسن ${rateFormat.format(monthlyRateChange)}٪`
@@ -4586,10 +4696,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
           <div className="fleet-section-heading fleet-vehicles-heading">
             <div><h2>سيارات الشراكة</h2></div>
             {canEditFleet && <div className="fleet-vehicle-actions">
-              <button className="fleet-button fleet-button-light fleet-vehicle-action-icon fleet-download-vehicle-action" type="button" title="تنزيل قالب جميع السيارات" aria-label="تنزيل قالب جميع السيارات" onClick={() => void downloadAllVehicleTemplate().catch((error: unknown) => { setNoticeIsError(true); setNotice(error instanceof Error ? `تعذر تنزيل قالب جميع السيارات: ${error.message}` : 'تعذر تنزيل قالب جميع السيارات.'); })}><Download size={22} strokeWidth={2.2} aria-hidden="true" /></button>
-                <button className="fleet-button fleet-button-light fleet-vehicle-action-icon fleet-import-vehicle-action" type="button" title={isImportingAllVehicleData ? 'جاري استيراد السيارات' : 'استيراد جميع السيارات'} aria-label={isImportingAllVehicleData ? 'جاري استيراد السيارات' : 'استيراد جميع السيارات'} disabled={isImportingAllVehicleData} onClick={() => allVehiclesImportRef.current?.click()}>{isImportingAllVehicleData ? <RefreshCw size={22} strokeWidth={2.2} aria-hidden="true" /> : <Upload size={22} strokeWidth={2.2} aria-hidden="true" />}</button>
+              <button className="fleet-button fleet-button-light fleet-vehicle-action-icon fleet-download-vehicle-action" type="button" title="تنزيل قالب جميع السيارات" aria-label="تنزيل قالب جميع السيارات" onClick={() => void downloadAllVehicleTemplate().catch((error: unknown) => { setNoticeIsError(true); setNotice(error instanceof Error ? `تعذر تنزيل قالب جميع السيارات: ${error.message}` : 'تعذر تنزيل قالب جميع السيارات.'); })}><Download size={15} strokeWidth={2} aria-hidden="true" /></button>
+                <button className="fleet-button fleet-button-light fleet-vehicle-action-icon fleet-import-vehicle-action" type="button" title={isImportingAllVehicleData ? 'جاري استيراد السيارات' : 'استيراد جميع السيارات'} aria-label={isImportingAllVehicleData ? 'جاري استيراد السيارات' : 'استيراد جميع السيارات'} disabled={isImportingAllVehicleData} onClick={() => allVehiclesImportRef.current?.click()}>{isImportingAllVehicleData ? <RefreshCw size={15} strokeWidth={2} aria-hidden="true" /> : <Upload size={15} strokeWidth={2} aria-hidden="true" />}</button>
                 <input ref={allVehiclesImportRef} className="fleet-file-input" type="file" accept=".xlsx" aria-label="اختر قالب جميع السيارات للاستيراد" onChange={importAllVehicleTemplate} />
-              <button className="fleet-button fleet-button-primary fleet-vehicle-action-icon fleet-add-vehicle-action" type="button" title="إضافة سيارة" aria-label="إضافة سيارة" onClick={() => setVehicleDialog(true)}><CarFront size={22} strokeWidth={2.2} aria-hidden="true" /><Plus className="fleet-add-vehicle-plus" size={13} strokeWidth={3} aria-hidden="true" /></button>
+              <button className="fleet-button fleet-button-primary fleet-vehicle-action-icon fleet-add-vehicle-action" type="button" title="إضافة سيارة" aria-label="إضافة سيارة" onClick={() => setVehicleDialog(true)}><CarFront size={15} strokeWidth={2} aria-hidden="true" /><Plus className="fleet-add-vehicle-plus" size={11} strokeWidth={3} aria-hidden="true" /></button>
             </div>}
           </div>
           {canEditFleet && <div className="fleet-vehicle-type-colors" aria-label="ألوان أنواع السيارات">
@@ -4646,13 +4756,24 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       </section>}
 
       {tab === 'entries' && canAccessEntries && <section className="fleet-section fleet-entry-screen">
-        <div className="fleet-section-heading entries-page-heading"><div><span className="fleet-overline">حركات الوقود والمصروفات</span><h2>سجل التعبئة</h2></div><span className="entries-count">عرض آخر {latestEntries.length} من {data.entries.length} حركة</span></div>
+        <div className="fleet-section-heading entries-page-heading"><div><span className="fleet-overline">حركات الوقود والمصروفات</span><div className="entries-page-title"><h2>سجل التعبئة</h2>{canEditFleet && <button type="button" className="fleet-clear-entries-heading" aria-label="مسح الحركات" title="مسح الحركات" disabled={data.entries.length === 0 || !cloudLoaded || isClearingAllEntries} onClick={() => {
+          setClearEntriesConfirmationPassword('');
+          setClearEntriesMode('all');
+          setClearEntriesMonth(dateInputValue(new Date()).slice(0, 7));
+          setIsClearEntriesMonthPickerOpen(false);
+          setIsClearEntriesConfirmationOpen(true);
+        }}><Trash2 size={14} aria-hidden="true" /></button>}</div></div><span className="entries-count">عرض آخر {latestEntries.length} من {data.entries.length} حركة</span></div>
         <div className="entries-actions">
           {canEditFleet && <>
             <button className="fleet-button fleet-button-primary fleet-icon-button" type="button" aria-label="تسجيل تعبئة" title="تسجيل تعبئة" onClick={() => startEntry()}><Fuel size={19} aria-hidden="true" /></button>
             <button className="fleet-button fleet-button-light fleet-icon-button" type="button" aria-label="إضافة صيانة" title="إضافة صيانة" onClick={openMaintenanceDialog}><Wrench size={18} aria-hidden="true" /></button>
-            <button className="fleet-button fleet-clear-entries-button" type="button" disabled={data.entries.length === 0 || !cloudLoaded || isClearingAllEntries} onClick={() => setIsClearEntriesConfirmationOpen(true)}><Trash2 size={16} aria-hidden="true" /> مسح كل الحركات</button>
           </>}
+          <button className="fleet-button fleet-button-light fleet-icon-button driver-settlement-open" type="button" aria-label="تصفية عهدة سائق" title="تصفية عهدة سائق" onClick={() => {
+            setDriverSettlementDriver(driverSettlementDrivers[0] || '');
+            setDriverSettlementFromDraft(formatEntryDateInput(driverSettlementFrom));
+            setDriverSettlementToDraft(formatEntryDateInput(driverSettlementTo));
+            setIsDriverSettlementOpen(true);
+          }}><ClipboardList size={18} aria-hidden="true" /></button>
           <button className="fleet-button fleet-button-light fleet-icon-button" type="button" aria-label="تصدير Excel" title="تصدير Excel" onClick={() => void exportExcel()}><svg className="excel-export-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 2.75h9l5 5v13.5H5z" fill="#fff" stroke="#217346" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 2.75v5h5" fill="#d9f0e2" stroke="#217346" strokeWidth="1.5" strokeLinejoin="round" /><path d="M2 8h11v12H2z" rx="1.5" fill="#217346" /><path d="m5 11 5 6m0-6-5 6" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" /></svg></button>
           <div className="entries-column-picker">
             <button
@@ -4741,14 +4862,15 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
           { key: 'overview' as const, label: 'نظرة عامة', Icon: LayoutDashboard },
           { key: 'vehicles' as const, label: 'السيارات', Icon: Car },
           { key: 'entries' as const, label: 'التعبئة', Icon: Fuel },
+          { key: 'routes' as const, label: 'GPS', Icon: MapPinned },
         ].map(({ key, Icon }) => (
           <button
             key={key}
             type="button"
             className={tab === key ? 'is-active' : ''}
             aria-current={tab === key ? 'page' : undefined}
-            aria-label={key === 'overview' ? 'نظرة عامة' : key === 'home' ? 'الرئيسية' : key === 'vehicles' ? 'السيارات' : 'سجل التعبئة'}
-            title={key === 'overview' ? 'نظرة عامة' : key === 'home' ? 'الرئيسية' : key === 'vehicles' ? 'السيارات' : 'سجل التعبئة'}
+            aria-label={key === 'overview' ? 'نظرة عامة' : key === 'home' ? 'الرئيسية' : key === 'vehicles' ? 'السيارات' : key === 'routes' ? 'GPS' : 'سجل التعبئة'}
+            title={key === 'overview' ? 'نظرة عامة' : key === 'home' ? 'الرئيسية' : key === 'vehicles' ? 'السيارات' : key === 'routes' ? 'GPS' : 'سجل التعبئة'}
             onClick={() => {
               if (key === 'entries' && !canAccessEntries) {
                 notifyAccessDenied();
@@ -4915,7 +5037,149 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         </form>
       </section>}
       {pendingDeleteEntry && <div className="fleet-confirm-backdrop" role="presentation"><div className="fleet-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-entry-title"><span className="fleet-confirm-icon">!</span><h2 id="delete-entry-title">تأكيد حذف السجل</h2><p>لحذف حركة التعبئة بتاريخ <strong>{formatDateArabic(pendingDeleteEntry.date)}</strong> اكتب كلمة <strong>موافق</strong> ثم اضغط تأكيد.</p><input className="fleet-confirm-input" aria-label="اكتب موافق للتأكيد" value={deleteConfirmationText} onChange={(event) => setDeleteConfirmationText(event.target.value)} autoFocus placeholder="اكتب: موافق" /><div><button type="button" className="fleet-confirm-cancel" onClick={cancelDeleteConfirmation}>إلغاء</button><button type="button" className="fleet-confirm-ok" disabled={deleteConfirmationText.trim() !== 'موافق'} onClick={confirmDeleteEntry}>تأكيد الحذف</button></div></div></div>}
-      {isClearEntriesConfirmationOpen && <div className="fleet-confirm-backdrop" role="presentation"><div className="fleet-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="clear-entries-title"><span className="fleet-confirm-icon">!</span><h2 id="clear-entries-title">تأكيد مسح كل الحركات</h2><p>هل أنت متأكد؟ سيتم مسح كل الحركات نهائيًا. ستبقى السيارات وإعدادات سعر اللتر كما هي.</p><div><button type="button" className="fleet-confirm-cancel" disabled={isClearingAllEntries} onClick={() => setIsClearEntriesConfirmationOpen(false)}>إلغاء</button><button type="button" className="fleet-confirm-ok" disabled={isClearingAllEntries} onClick={() => void clearAllEntries()}>{isClearingAllEntries ? 'جارٍ المسح...' : 'تأكيد المسح'}</button></div></div></div>}
+      {isClearEntriesConfirmationOpen && canEditFleet && <div className="fleet-confirm-backdrop" role="presentation"><div className="fleet-confirm-dialog clear-entries-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="clear-entries-title">
+        <span className="fleet-confirm-icon">!</span>
+        <h2 id="clear-entries-title">تأكيد مسح الحركات</h2>
+        <p>{clearEntriesMode === 'all'
+          ? 'سيتم مسح كل الحركات نهائيًا. ستبقى السيارات وإعدادات سعر اللتر كما هي.'
+          : 'سيتم مسح الحركات المسجلة في الشهر المحدد فقط، وستبقى الحركات الأخرى والسيارات وإعدادات سعر اللتر كما هي.'}</p>
+        <div className="clear-entries-mode-options" role="radiogroup" aria-label="نطاق مسح الحركات">
+          <label className={clearEntriesMode === 'all' ? 'is-selected' : ''}>
+            <input type="radio" name="clear-entries-mode" value="all" checked={clearEntriesMode === 'all'} onChange={() => setClearEntriesMode('all')} disabled={isClearingAllEntries} />
+            <span>مسح كل الحركات</span>
+          </label>
+          <label className={clearEntriesMode === 'month' ? 'is-selected' : ''}>
+            <input type="radio" name="clear-entries-mode" value="month" checked={clearEntriesMode === 'month'} onChange={() => setClearEntriesMode('month')} disabled={isClearingAllEntries} />
+            <span>مسح حركات شهر معين</span>
+          </label>
+        </div>
+        {clearEntriesMode === 'month' && <div className="clear-entries-month-field">
+          <span>الشهر والسنة</span>
+          <MonthYearPicker
+            selectedMonth={clearEntriesMonth}
+            onSelectMonth={setClearEntriesMonth}
+            ariaLabel="اختيار شهر حركات التعبئة المراد مسحها"
+            isOpen={isClearEntriesMonthPickerOpen}
+            onOpenChange={setIsClearEntriesMonthPickerOpen}
+            isActive
+            className="clear-entries-month-picker"
+            portalStyle={monthPickerPortalStyle}
+          />
+          <small>{numberFormat.format(data.entries.filter((entry) => entry.date.slice(0, 7) === clearEntriesMonth).length)} حركة في الشهر المحدد</small>
+        </div>}
+        <label className="clear-entries-password-label" htmlFor="clear-entries-password">اكتب كلمة التأكيد</label>
+        <input id="clear-entries-password" className="fleet-confirm-input" type="password" autoComplete="new-password" aria-label="كلمة التأكيد لمسح الحركات" value={clearEntriesConfirmationPassword} onChange={(event) => setClearEntriesConfirmationPassword(event.target.value)} autoFocus placeholder="كلمة التأكيد" disabled={isClearingAllEntries} />
+        <div><button type="button" className="fleet-confirm-cancel" disabled={isClearingAllEntries} onClick={() => {
+          setIsClearEntriesConfirmationOpen(false);
+          setClearEntriesConfirmationPassword('');
+          setIsClearEntriesMonthPickerOpen(false);
+        }}>إلغاء</button><button type="button" className="fleet-confirm-ok" disabled={isClearingAllEntries || !isClearEntriesPasswordValid || !cloudLoaded || (clearEntriesMode === 'month' && !data.entries.some((entry) => entry.date.slice(0, 7) === clearEntriesMonth))} onClick={() => void clearAllEntries()}>{isClearingAllEntries ? 'جارٍ المسح...' : 'تأكيد المسح'}</button></div>
+      </div></div>}
+      {isDriverSettlementOpen && <div className="fleet-modal-backdrop driver-settlement-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setIsDriverSettlementOpen(false)}>
+        <section className="fleet-modal driver-settlement-modal" role="dialog" aria-modal="true" aria-labelledby="driver-settlement-title">
+          <header className="fleet-modal-title">
+            <h2 id="driver-settlement-title">تصفية عهدة سواق</h2>
+            <button type="button" aria-label="إغلاق تصفية عهدة السائق" onClick={() => setIsDriverSettlementOpen(false)}>×</button>
+          </header>
+          <div className="driver-settlement-period-toggle" role="group" aria-label="طريقة تحديد فترة التصفية">
+            <button type="button" className={driverSettlementPeriodMode === 'month' ? 'is-active' : ''} aria-pressed={driverSettlementPeriodMode === 'month'} onClick={() => {
+              setDriverSettlementPeriodMode('month');
+              setIsDriverSettlementMonthPickerOpen(false);
+            }}>شهر</button>
+            <button type="button" className={driverSettlementPeriodMode === 'date' ? 'is-active' : ''} aria-pressed={driverSettlementPeriodMode === 'date'} onClick={() => {
+              setDriverSettlementPeriodMode('date');
+              setIsDriverSettlementMonthPickerOpen(false);
+            }}>تاريخ معين</button>
+          </div>
+          <div className={`driver-settlement-filters${driverSettlementPeriodMode === 'month' ? ' is-month-mode' : ''}`}>
+            <label>السائق
+              <select value={driverSettlementDriver} onChange={(event) => setDriverSettlementDriver(event.target.value)} disabled={!driverSettlementDrivers.length}>
+                {driverSettlementDrivers.length
+                  ? driverSettlementDrivers.map((driver) => <option key={driver} value={driver}>{driver}</option>)
+                  : <option value="">لا يوجد سائقون في الحركات</option>}
+              </select>
+            </label>
+            {driverSettlementPeriodMode === 'month' ? <div className="driver-settlement-month-field">
+              <span>الشهر</span>
+              <MonthYearPicker
+                selectedMonth={driverSettlementMonth}
+                onSelectMonth={setDriverSettlementMonth}
+                ariaLabel="اختيار شهر تصفية عهدة السائق"
+                isOpen={isDriverSettlementMonthPickerOpen}
+                onOpenChange={setIsDriverSettlementMonthPickerOpen}
+                isActive
+                className="driver-settlement-month-picker"
+                portalStyle={monthPickerPortalStyle}
+              />
+            </div> : <>
+            <label className="driver-settlement-date-field"><span>من تاريخ</span><div className="entry-date-input-wrap driver-settlement-date-wrap">
+              <input type="text" inputMode="numeric" dir="ltr" maxLength={10} placeholder="يوم/شهر/سنة" autoComplete="off" value={driverSettlementFromDraft} aria-label="من تاريخ، يوم شهر سنة" onChange={(event) => {
+                const value = event.target.value;
+                const parsedDate = parseDriverSettlementDate(value);
+                setDriverSettlementFromDraft(value);
+                setDriverSettlementFrom(parsedDate || '');
+              }} onBlur={() => {
+                if (parsedDriverSettlementFrom) setDriverSettlementFromDraft(formatEntryDateInput(parsedDriverSettlementFrom));
+              }} />
+              <button type="button" className="entry-date-picker-button" aria-label="اختيار تاريخ البداية من التقويم" title="اختيار تاريخ البداية من التقويم" onClick={() => {
+                const picker = driverSettlementFromPickerRef.current;
+                if (!picker) return;
+                if (typeof picker.showPicker === 'function') picker.showPicker();
+                else {
+                  picker.focus();
+                  picker.click();
+                }
+              }}><CalendarDays size={18} aria-hidden="true" /></button>
+              <input ref={driverSettlementFromPickerRef} className="entry-date-native-picker" type="date" aria-label="تقويم تاريخ البداية" tabIndex={-1} value={driverSettlementFrom} onChange={(event) => {
+                const value = event.target.value;
+                setDriverSettlementFrom(value);
+                setDriverSettlementFromDraft(formatEntryDateInput(value));
+              }} />
+            </div></label>
+            <label className="driver-settlement-date-field"><span>إلى تاريخ</span><div className="entry-date-input-wrap driver-settlement-date-wrap">
+              <input type="text" inputMode="numeric" dir="ltr" maxLength={10} placeholder="يوم/شهر/سنة" autoComplete="off" value={driverSettlementToDraft} aria-label="إلى تاريخ، يوم شهر سنة" onChange={(event) => {
+                const value = event.target.value;
+                const parsedDate = parseDriverSettlementDate(value);
+                setDriverSettlementToDraft(value);
+                setDriverSettlementTo(parsedDate || '');
+              }} onBlur={() => {
+                if (parsedDriverSettlementTo) setDriverSettlementToDraft(formatEntryDateInput(parsedDriverSettlementTo));
+              }} />
+              <button type="button" className="entry-date-picker-button" aria-label="اختيار تاريخ النهاية من التقويم" title="اختيار تاريخ النهاية من التقويم" onClick={() => {
+                const picker = driverSettlementToPickerRef.current;
+                if (!picker) return;
+                if (typeof picker.showPicker === 'function') picker.showPicker();
+                else {
+                  picker.focus();
+                  picker.click();
+                }
+              }}><CalendarDays size={18} aria-hidden="true" /></button>
+              <input ref={driverSettlementToPickerRef} className="entry-date-native-picker" type="date" aria-label="تقويم تاريخ النهاية" tabIndex={-1} value={driverSettlementTo} onChange={(event) => {
+                const value = event.target.value;
+                setDriverSettlementTo(value);
+                setDriverSettlementToDraft(formatEntryDateInput(value));
+              }} />
+            </div></label>
+            </>}
+          </div>
+          {driverSettlementDateRangeInvalid
+            ? <p className="driver-settlement-empty" role="alert">{driverSettlementDateInputInvalid ? 'أدخل تاريخًا صحيحًا بصيغة يوم/شهر/سنة.' : 'تاريخ البداية يجب أن يسبق تاريخ النهاية.'}</p>
+            : driverSettlementEntries.length
+              ? <>
+                <p className="driver-settlement-entry-count">عدد الحركات في الفترة: {numberFormat.format(driverSettlementEntries.length)}</p>
+                <div className="driver-settlement-totals">
+                  <article><span>إجمالي المسافة</span><strong>{numberFormat.format(driverSettlementTotals.distance)} <small>كم</small></strong></article>
+                  <article><span>التموين الفعلي المدفوع</span><strong>{currencyFormat.format(driverSettlementTotals.actual)}</strong></article>
+                  <article><span>التموين المقرر</span><strong>{currencyFormat.format(driverSettlementTotals.allowance)}</strong></article>
+                  <article><span>الانحراف الإجمالي</span><strong>{currencyFormat.format(driverSettlementTotals.deviation)}</strong></article>
+                </div>
+              </>
+              : <p className="driver-settlement-empty">{driverSettlementDrivers.length ? 'لا توجد حركات للسائق في الفترة المحددة.' : 'لا توجد حركات مسجلة لعرض التصفية.'}</p>}
+          <footer className="driver-settlement-actions">
+            <button type="button" className="fleet-button fleet-button-primary driver-settlement-close" onClick={() => setIsDriverSettlementOpen(false)}>إغلاق</button>
+          </footer>
+        </section>
+      </div>}
     </main>
   );
 };

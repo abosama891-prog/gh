@@ -364,7 +364,7 @@ const CarsApp: React.FC = () => {
         <div className="cars-landing-copy">
           <div className="cars-landing-brand">
             <span className="cars-brand-mark" aria-hidden="true"><span className="cars-brand-ring" /></span>
-            <span className="cars-brand-copy"><strong>Abu Ghali</strong><small>MURAQABAT</small></span>
+            <span className="cars-brand-copy"><strong>Abou Ghaly</strong><small>MURAQABAT</small></span>
           </div>
           <h1>نظام إدارة <span>السيارات</span></h1>
           <p className="cars-landing-description">متابعة سيارات الشركة وبياناته في مكان واحد.</p>
@@ -393,7 +393,7 @@ const CarsApp: React.FC = () => {
         </button>
         <div className="cars-auth-brand">
           <span className="cars-brand-mark cars-brand-mark-auth" aria-hidden="true"><span className="cars-brand-ring" /></span>
-          <span className="cars-brand-copy"><strong>Abu Ghali</strong><small>MURAQABAT</small></span>
+          <span className="cars-brand-copy"><strong>Abou Ghaly</strong><small>MURAQABAT</small></span>
         </div>
         {currentScreen === 'admin-login' ? <>
           <div className="cars-auth-icon cars-auth-admin-icon"><ShieldCheck aria-hidden="true" /></div>

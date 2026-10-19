@@ -1,6 +1,6 @@
 {
-  "name": "Abu Ghali - Muraqabat",
-  "short_name": "Abu Ghali",
+  "name": "Abou Ghaly - Muraqabat",
+  "short_name": "Abou Ghaly",
   "description": "نظام إدارة أسطول السيارات - أبو غالي",
   "lang": "ar",
   "dir": "rtl",
@@ -14,7 +14,7 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icon-speedometer.svg",
+      "src": "/car-mark.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
