@@ -40,7 +40,7 @@ service cloud.firestore {
         && request.resource.data.action in ['edit', 'delete']
         && request.resource.data.itemName is string
         && request.resource.data.createdAt is string;
-      allow update, delete: if false;
+      allow update, delete: if isFleetAdmin();
     }
   }
 }

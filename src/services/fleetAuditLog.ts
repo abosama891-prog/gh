@@ -1,4 +1,4 @@
-import { addDoc, collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getDocs, limit, onSnapshot, orderBy, query, writeBatch } from 'firebase/firestore';
 import { firebaseReady, firestore } from './firebase';
 import type { FleetRole } from './fleetUserStore';
 
@@ -80,4 +80,19 @@ export const subscribeToFleetAuditLog = (
     cancelled = true;
     unsubscribe();
   };
+};
+
+export const clearFleetAuditLog = async (): Promise<void> => {
+  if (!auditLogsCollection) throw new Error('Firestore is not configured');
+  await firebaseReady;
+  const snapshot = await getDocs(auditLogsCollection);
+  const docs = snapshot.docs;
+  // Firestore batch writes are limited to 500 operations per commit,
+  // so large audit logs are cleared in chunks.
+  const CHUNK_SIZE = 450;
+  for (let index = 0; index < docs.length; index += CHUNK_SIZE) {
+    const batch = writeBatch(firestore!);
+    docs.slice(index, index + CHUNK_SIZE).forEach((document) => batch.delete(document.ref));
+    await batch.commit();
+  }
 };

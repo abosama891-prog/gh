@@ -10,10 +10,11 @@ import { readCloudFleetData, readCloudFleetDataStrict, readCloudRouteEntries, sa
 import { firebaseAuth } from '../../services/firebase';
 import { publishDeviationNotification, subscribeToDeviationNotifications } from '../../services/deviationNotificationStore';
 import type { DeviationNotification, FleetNotification, FleetUpdateNotification } from '../../services/deviationNotificationStore';
-import { recordFleetAuditEntry, subscribeToFleetAuditLog } from '../../services/fleetAuditLog';
+import { clearFleetAuditLog, recordFleetAuditEntry, subscribeToFleetAuditLog } from '../../services/fleetAuditLog';
 import type { FleetAuditAction, FleetAuditEntry } from '../../services/fleetAuditLog';
 import { applyUpdate } from '../../services/serviceWorker';
 import { clearDeferredPrompt, getDeferredPrompt } from '../../services/pwaInstall';
+import DailyStatementBoard from './DailyStatementBoard';
 import { loadMoreGpsLogs, subscribeToGpsLogs } from '../../services/gpsStore';
 import type { GpsLog, GpsLogCursor } from '../../services/gpsStore';
 import './car-fuel.css';
@@ -876,6 +877,9 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const [guests, setGuests] = useState<FleetGuest[]>([]);
   const [auditEntries, setAuditEntries] = useState<FleetAuditEntry[]>([]);
   const [auditLogError, setAuditLogError] = useState('');
+  const [isClearingAuditLog, setIsClearingAuditLog] = useState(false);
+  const [isClearAuditLogConfirmOpen, setIsClearAuditLogConfirmOpen] = useState(false);
+  const [clearAuditLogConfirmationPassword, setClearAuditLogConfirmationPassword] = useState('');
   const [guestDraft, setGuestDraft] = useState({ password: '', employeeName: '' });
   const [editingGuest, setEditingGuest] = useState<FleetGuest | null>(null);
   const [showGuestDialog, setShowGuestDialog] = useState(false);
@@ -1032,6 +1036,24 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const canEditFleet = currentUser.role === 'admin' && Boolean(firebaseAuth?.currentUser);
   const canAccessEntries = currentUser.role !== 'viewer';
   const isClearEntriesPasswordValid = clearEntriesConfirmationPassword.trim().toLowerCase() === CLEAR_ENTRIES_CONFIRMATION_PASSWORD;
+  const isClearAuditLogPasswordValid = clearAuditLogConfirmationPassword.trim() === 'موافق';
+
+  const handleClearAuditLog = async () => {
+    if (!canEditFleet || !isClearAuditLogPasswordValid || !cloudLoaded || isClearingAuditLog) return;
+    setIsClearingAuditLog(true);
+    try {
+      await clearFleetAuditLog();
+      setNotice('تم مسح سجل العمليات بالكامل');
+    } catch (error) {
+      setNoticeIsError(true);
+      setNotice(`تعذر مسح سجل العمليات: ${error instanceof Error ? error.message : 'خطأ غير معروف'}`);
+    } finally {
+      setIsClearingAuditLog(false);
+      setIsClearAuditLogConfirmOpen(false);
+      setClearAuditLogConfirmationPassword('');
+    }
+  };
+
   const recordAudit = (action: FleetAuditAction, itemName: string) => {
     if (!canEditFleet) return;
     void recordFleetAuditEntry(currentUser, action, itemName).catch((error: unknown) => {
@@ -3953,7 +3975,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         </div>
       </header>
 
-      {tab === 'home' ? <nav className={`fleet-tabs fleet-tabs-home${currentUser.role === 'viewer' ? ' fleet-tabs-home-viewer' : ''}`} aria-label="أقسام متابعة السيارات">
+      {tab === 'home' ? <><div className="fleet-home-hero"><img className="fleet-home-logo" src="/logo.png" alt="شعار أبو غالي" onError={(event) => { const img = event.currentTarget; img.style.display = 'none'; }} /></div><nav className={`fleet-tabs fleet-tabs-home${currentUser.role === 'viewer' ? ' fleet-tabs-home-viewer' : ''}`} aria-label="أقسام متابعة السيارات">
         {homeNavigationTiles.map(({ key, label, description, Icon }) => (
           <button key={key} type="button" className={`fleet-home-section fleet-home-section-${key}`} onClick={() => {
             setTab(key);
@@ -3963,7 +3985,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             <span className="fleet-tab-copy"><strong>{label}</strong></span>
           </button>
         ))}
-      </nav> : openSection ? <nav className={`fleet-section-bar fleet-section-bar-${openSection.key}`} aria-label={`قسم ${openSection.label}`}>
+      </nav></> : openSection ? <nav className={`fleet-section-bar fleet-section-bar-${openSection.key}`} aria-label={`قسم ${openSection.label}`}>
         <div className="fleet-section-bar-center" dir="rtl">
           <button type="button" className="fleet-section-title-button" onClick={() => { setTab('home'); setSelectedVehicleId(null); }}>{openSection.label}</button>
           <button type="button" className="fleet-section-back-button" onClick={() => { setTab('home'); setSelectedVehicleId(null); }}>رجوع</button>
@@ -4011,6 +4033,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         <div className="fleet-section-heading">
           <div><span className="fleet-overline">سجل التعديلات والحذف</span><h2>سجل العمليات</h2><p>أحدث 100 عملية تعديل أو حذف مسجلة.</p></div>
           <button type="button" className="fleet-link-button" onClick={() => setTab('home')}>العودة للرئيسية</button>
+          {auditEntries.length > 0 && <button type="button" className="fleet-button fleet-button-danger" onClick={() => {
+            setClearAuditLogConfirmationPassword('');
+            setIsClearAuditLogConfirmOpen(true);
+          }} disabled={isClearingAuditLog || !cloudLoaded}>{isClearingAuditLog ? 'جارٍ المسح...' : 'مسح السجل بالكامل'}</button>}
         </div>
         {auditLogError
           ? <div className="fleet-user-permission-note" role="alert">تعذر تحميل سجل العمليات: {auditLogError}</div>
@@ -4074,57 +4100,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
             </label>
           </div>
           {routeDateFilterInvalid && <p className="route-date-error" role="alert">أدخل تاريخًا صحيحًا بصيغة يوم/شهر/سنة.</p>}
-          {routeBoardVehicles.length === 0 ? <div className="fleet-empty-state route-empty-state"><MapPinned aria-hidden="true" /><strong>لا توجد سيارات مسجلة لعرض البيان</strong></div> : <div className="route-daily-cards">
-            {routeBoardVehicles.map((vehicle) => {
-                const entry = routeEntriesForDate.find((item) => !item.isDailyVehicle && (
-                  vehicle.fleetVehicleId
-                    ? item.vehicleId === vehicle.fleetVehicleId
-                    : item.dailyVehicleId === vehicle.id || (!item.vehicleId && item.plate.trim() === vehicle.plate.trim())
-                ));
-                const key = `${routeDateFilter}|${vehicle.id}`;
-                const draft = routeDailyDrafts[key] || {
-                  departure: entry?.departure || '',
-                  route: entry?.route || '',
-                  representative: entry?.representative || '',
-                  driver: entry?.driver || '',
-                };
-                const updateDraft = (field: keyof RouteDailyDraft, value: string) => setRouteDailyDrafts((current) => ({
-                  ...current,
-                  [key]: { ...(current[key] || draft), [field]: value },
-                }));
-                const isExpanded = expandedRouteVehicleIds.has(vehicle.id);
-                const panelId = `route-daily-fields-${vehicle.id}`;
-                return <article className={`route-daily-card${isExpanded ? ' is-expanded' : ''}`} key={vehicle.id}>
-                  <header className="route-daily-card-header">
-                  <button type="button" className="route-daily-card-toggle" aria-expanded={isExpanded} aria-controls={panelId} onClick={() => setExpandedRouteVehicleIds((current) => {
-                    const next = new Set(current);
-                    if (next.has(vehicle.id)) next.delete(vehicle.id);
-                    else next.add(vehicle.id);
-                    return next;
-                  })}>
-                    <span className="route-daily-card-vehicle"><strong dir="auto">{vehicle.plate}</strong><span>{vehicle.name}</span></span>
-                    <ChevronDown className="route-daily-card-chevron" size={19} aria-hidden="true" />
-                  </button>
-                  {canEditFleet && <button type="button" className="route-daily-card-edit" aria-label={`تعديل بيانات ${vehicle.plate} في البيان فقط`} title="تعديل الاسم والوصف في البيان فقط" onClick={() => {
-                    setRouteVehicleDialog({ vehicleId: vehicle.id, isDailyOnly: vehicle.isDailyOnly, plate: vehicle.plate, name: vehicle.name });
-                    setRouteVehicleDialogError('');
-                  }}><Pencil size={14} aria-hidden="true" /></button>}
-                  </header>
-                  {isExpanded && <div className="route-daily-card-content" id={panelId}>
-                    <div className="route-daily-card-fields">
-                      <label><span>السائق</span>{canEditFleet ? <input className="route-daily-input" aria-label={`السائق لسيارة ${vehicle.plate}`} value={draft.driver} onChange={(event) => updateDraft('driver', event.target.value)} /> : <strong>{draft.driver || '—'}</strong>}</label>
-                      <label><span>نقطة الانطلاق</span>{canEditFleet ? <div className="route-daily-location-field"><input className="route-daily-input" aria-label={`نقطة الانطلاق لسيارة ${vehicle.plate}`} value={draft.departure} onChange={(event) => updateDraft('departure', event.target.value)} /><button type="button" aria-label={`فتح الخريطة لنقطة الانطلاق ${vehicle.plate}`} title="فتح في خرائط Google" onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.departure)}`, '_blank', 'noopener,noreferrer')}><MapPin size={16} aria-hidden="true" /></button></div> : <strong>{draft.departure || '—'}</strong>}</label>
-                      <label><span>خط السير</span>{canEditFleet ? <div className="route-daily-location-field"><input className="route-daily-input" aria-label={`خط السير لسيارة ${vehicle.plate}`} value={draft.route} onChange={(event) => updateDraft('route', event.target.value)} /><button type="button" aria-label={`فتح الخريطة لخط سير ${vehicle.plate}`} title="فتح في خرائط Google" onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(draft.route)}`, '_blank', 'noopener,noreferrer')}><MapPin size={16} aria-hidden="true" /></button></div> : <strong>{draft.route || '—'}</strong>}</label>
-                      <label><span>المندوب</span>{canEditFleet ? <input className="route-daily-input" aria-label={`المندوب لسيارة ${vehicle.plate}`} value={draft.representative} onChange={(event) => updateDraft('representative', event.target.value)} /> : <strong>{draft.representative || '—'}</strong>}</label>
-                    </div>
-                    {canEditFleet && <button type="button" className="fleet-button fleet-button-primary route-daily-save" disabled={!routesCloudLoaded || routeDateFilterInvalid || savingRouteVehicleIds.has(vehicle.id)} onClick={() => void saveRouteVehicle(vehicle)}>{savingRouteVehicleIds.has(vehicle.id) ? 'جارٍ الحفظ...' : 'حفظ'}</button>}
-                  </div>}
-                </article>;
-              })}
-          </div>}
-          <div className="route-export-footer">
-            <button className="fleet-button fleet-button-light route-export-button" type="button" onClick={() => void exportRouteEntries()} disabled={isExportingRoutes || routeDateFilterInvalid || !routeBoardVehicles.length}><Download aria-hidden="true" />{isExportingRoutes ? 'جاري تجهيز Excel...' : 'تصدير إلى Excel'}</button>
-          </div>
+          <DailyStatementBoard canEdit={canEditFleet} dateLabel={formatDateArabic(routeDateFilter)} notify={(message, isError) => { setNoticeIsError(isError); setNotice(message); }} />
         </section>
         {routeVehicleDialog && canEditFleet && <div className="fleet-modal-backdrop route-vehicle-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRouteVehicleDialog(null)}>
           <form className="fleet-modal route-vehicle-modal" onSubmit={saveRouteVehicleMetadata} role="dialog" aria-modal="true" aria-labelledby="route-vehicle-dialog-title">
@@ -4763,6 +4739,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
           setIsClearEntriesMonthPickerOpen(false);
           setIsClearEntriesConfirmationOpen(true);
         }}><Trash2 size={14} aria-hidden="true" /></button>}</div></div><span className="entries-count">عرض آخر {latestEntries.length} من {data.entries.length} حركة</span></div>
+        <div className="doc-summary-card">
+          <div className="doc-summary-item"><span className="doc-summary-label">آخر رقم مستند</span><strong className="doc-summary-value">{data.entries[0]?.documentNumber || '—'}</strong></div>
+          <div className="doc-summary-item"><span className="doc-summary-label">المستند السابق</span><strong className="doc-summary-value">{data.entries[1]?.documentNumber || '—'}</strong></div>
+        </div>
         <div className="entries-actions">
           {canEditFleet && <>
             <button className="fleet-button fleet-button-primary fleet-icon-button" type="button" aria-label="تسجيل تعبئة" title="تسجيل تعبئة" onClick={() => startEntry()}><Fuel size={19} aria-hidden="true" /></button>
@@ -4854,7 +4834,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
         </tbody></table></div>
       </section>}
 
-      <footer className="fleet-footer"><span>مراقبة سيارات شركة أبو غالي</span></footer>
+      <footer className="fleet-footer"><div className="floating-text"><span><strong style={{ color: '#e67e22' }}>مراقبة</strong> <strong style={{ color: '#2980b9' }}>سيارات</strong> <strong style={{ color: '#27ae60' }}>شركة</strong> <strong style={{ color: '#c0392b' }}>أبو غالي</strong></span></div></footer>
 
       {!entryDialog && <nav className="fleet-mobile-nav" aria-label="التنقل الرئيسي">
         {[
@@ -5075,6 +5055,19 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
           setIsClearEntriesMonthPickerOpen(false);
         }}>إلغاء</button><button type="button" className="fleet-confirm-ok" disabled={isClearingAllEntries || !isClearEntriesPasswordValid || !cloudLoaded || (clearEntriesMode === 'month' && !data.entries.some((entry) => entry.date.slice(0, 7) === clearEntriesMonth))} onClick={() => void clearAllEntries()}>{isClearingAllEntries ? 'جارٍ المسح...' : 'تأكيد المسح'}</button></div>
       </div></div>}
+      {isClearAuditLogConfirmOpen && <div className="fleet-confirm-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setIsClearAuditLogConfirmOpen(false)}>
+        <div className="fleet-confirm-dialog clear-audit-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="clear-audit-title">
+          <span className="fleet-confirm-icon">!</span>
+          <h2 id="clear-audit-title">تأكيد مسح سجل العمليات</h2>
+          <p>هل أنت متأكد من مسح كل سجل العمليات؟ لا يمكن التراجع عن هذه الخطوة.</p>
+          <label className="clear-entries-password-label" htmlFor="clear-auditlog-password">اكتب كلمة التأكيد</label>
+          <input id="clear-auditlog-password" className="fleet-confirm-input" type="password" autoComplete="new-password" aria-label="كلمة التأكيد لمسح سجل العمليات" value={clearAuditLogConfirmationPassword} onChange={(event) => setClearAuditLogConfirmationPassword(event.target.value)} autoFocus placeholder="اكتب: موافق" disabled={isClearingAuditLog} />
+          <div><button type="button" className="fleet-confirm-cancel" disabled={isClearingAuditLog} onClick={() => {
+            setIsClearAuditLogConfirmOpen(false);
+            setClearAuditLogConfirmationPassword('');
+          }}>إلغاء</button><button type="button" className="fleet-confirm-ok" disabled={isClearingAuditLog || !isClearAuditLogPasswordValid || !cloudLoaded} onClick={() => void handleClearAuditLog()}>{isClearingAuditLog ? 'جارٍ المسح...' : 'تأكيد المسح'}</button></div>
+        </div>
+      </div>}
       {isDriverSettlementOpen && <div className="fleet-modal-backdrop driver-settlement-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setIsDriverSettlementOpen(false)}>
         <section className="fleet-modal driver-settlement-modal" role="dialog" aria-modal="true" aria-labelledby="driver-settlement-title">
           <header className="fleet-modal-title">
