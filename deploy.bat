@@ -35,7 +35,7 @@ if errorlevel 1 (
 echo.
 echo ========================================
 echo   ✅ تم النشر بنجاح!
-echo   🌐 https://aboghaly-cars.web.app
+echo   🌐 https://aboughaly.web.app
 echo ========================================
 echo.
 pause
