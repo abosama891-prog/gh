@@ -154,11 +154,19 @@ const entryColumns: { key: EntryColumnKey; label: string }[] = [
   { key: 'totalCost', label: 'الإجمالي' },
 ];
 const defaultEntryColumnVisibility = Object.fromEntries(entryColumns.map(({ key }) => [key, true])) as Record<EntryColumnKey, boolean>;
-const readDetailColumnVisibility = (storageKey: string): Record<string, Partial<Record<DetailColumnKey, boolean>>> => {
+const readDetailColumnVisibility = (storageKey: string, legacyStorageKey: string): Partial<Record<DetailColumnKey, boolean>> => {
   try {
-    const stored = JSON.parse(localStorage.getItem(storageKey) || '{}') as unknown;
-    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return {};
-    return stored as Record<string, Partial<Record<DetailColumnKey, boolean>>>;
+    const stored = JSON.parse(localStorage.getItem(storageKey) || 'null') as unknown;
+    const legacy = JSON.parse(localStorage.getItem(legacyStorageKey) || 'null') as unknown;
+    const storedPreferences = stored && typeof stored === 'object' && !Array.isArray(stored)
+      ? stored as Record<string, unknown>
+      : legacy && typeof legacy === 'object' && !Array.isArray(legacy)
+        ? Object.values(legacy as Record<string, unknown>).find((value) => value && typeof value === 'object' && !Array.isArray(value)) as Record<string, unknown> | undefined
+        : undefined;
+    if (!storedPreferences) return {};
+    return Object.fromEntries(
+      Object.entries(storedPreferences).filter((entry): entry is [DetailColumnKey, boolean] => typeof entry[1] === 'boolean'),
+    ) as Partial<Record<DetailColumnKey, boolean>>;
   } catch (error) {
     console.error('Failed to read vehicle detail column preferences', error);
     return {};
@@ -875,7 +883,8 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   const themeStorageKey = `cars-site-theme-${currentUser.email || currentUser.username}`;
   const dismissedDeviationNotificationsKey = `cars-site-dismissed-deviation-notifications-${encodeURIComponent(currentUser.email || currentUser.username)}`;
   const entryColumnVisibilityKey = `cars-site-entry-columns-${encodeURIComponent(currentUser.id || currentUser.email || currentUser.username)}`;
-  const detailColumnVisibilityKey = `cars-site-vehicle-detail-columns-${encodeURIComponent(currentUser.id || currentUser.email || currentUser.username)}`;
+  const detailColumnVisibilityKey = 'fleet-columns-global';
+  const legacyDetailColumnVisibilityKey = `cars-site-vehicle-detail-columns-${encodeURIComponent(currentUser.id || currentUser.email || currentUser.username)}`;
   const [themeKey, setThemeKey] = useState<ThemeKey>(() => resolveTheme(localStorage.getItem(themeStorageKey)));
   const [fontSizeKey, setFontSizeKey] = useState<FontSizeKey>(() => (localStorage.getItem(`${themeStorageKey}-font`) as FontSizeKey) || 'medium');
   const [openingOdometerDrafts, setOpeningOdometerDrafts] = useState<Record<string, string>>({});
@@ -913,7 +922,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     }
   });
   const [isEntryColumnsPanelOpen, setIsEntryColumnsPanelOpen] = useState(false);
-  const [detailColumnVisibilityByVehicle, setDetailColumnVisibilityByVehicle] = useState(() => readDetailColumnVisibility(detailColumnVisibilityKey));
+  const [detailColumnVisibility, setDetailColumnVisibility] = useState(() => readDetailColumnVisibility(detailColumnVisibilityKey, legacyDetailColumnVisibilityKey));
   const [isDetailColumnsPanelOpen, setIsDetailColumnsPanelOpen] = useState(false);
   const [ledgerFilters, setLedgerFilters] = useState({ vehicleId: 'all', from: '', to: '', search: '' });
   const [ledgerFromDateDraft, setLedgerFromDateDraft] = useState('');
@@ -1209,13 +1218,13 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
 
   useEffect(() => {
     try {
-      localStorage.setItem(detailColumnVisibilityKey, JSON.stringify(detailColumnVisibilityByVehicle));
+      localStorage.setItem(detailColumnVisibilityKey, JSON.stringify(detailColumnVisibility));
     } catch (error) {
       console.error('Failed to save vehicle detail column preferences', error);
       setNoticeIsError(true);
       setNotice('تعذر حفظ إعدادات أعمدة تفاصيل السيارات على هذا الجهاز.');
     }
-  }, [detailColumnVisibilityByVehicle, detailColumnVisibilityKey]);
+  }, [detailColumnVisibility, detailColumnVisibilityKey]);
 
   useEffect(() => {
     if (!cloudLoaded || monthlySummaryMonthSelectedRef.current || data.entries.length === 0) return;
@@ -1810,9 +1819,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   }), { distance: 0, liters: 0, expected: 0, deviation: 0, cost: 0 });
 
   const selectedSummary = summaries.find((summary) => summary.vehicle.id === selectedVehicleId);
-  const selectedDetailColumnVisibility = selectedSummary
-    ? detailColumnVisibilityByVehicle[selectedSummary.vehicle.id] || defaultDetailColumnVisibility
-    : defaultDetailColumnVisibility;
+  const selectedDetailColumnVisibility = { ...defaultDetailColumnVisibility, ...detailColumnVisibility };
   const visibleDetailColumns = detailColumns.filter(({ key }) => selectedDetailColumnVisibility[key] !== false);
   const selectedEntries = data.entries
     .filter((entry) => entry.vehicleId === selectedVehicleId)
@@ -1841,16 +1848,14 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     ? selectedMovementRates.reduce((worst, rate) => Math.min(worst, rate), Number.POSITIVE_INFINITY)
     : 0;
   const comparisonToday = new Date();
-  const currentPeriodEnd = dateInputValue(comparisonToday);
-  const currentPeriodStart = `${currentPeriodEnd.slice(0, 7)}-01`;
-  const previousMonthStartDate = new Date(comparisonToday.getFullYear(), comparisonToday.getMonth() - 1, 1);
-  const previousMonthLastDay = new Date(comparisonToday.getFullYear(), comparisonToday.getMonth(), 0).getDate();
-  const previousPeriodEnd = dateInputValue(new Date(
-    previousMonthStartDate.getFullYear(),
-    previousMonthStartDate.getMonth(),
-    Math.min(comparisonToday.getDate(), previousMonthLastDay),
-  ));
-  const previousPeriodStart = dateInputValue(previousMonthStartDate);
+  const comparisonMonthStart = new Date(comparisonToday.getFullYear(), comparisonToday.getMonth(), 1);
+  const lastMonthStart = new Date(comparisonToday.getFullYear(), comparisonToday.getMonth() - 1, 1);
+  const monthBeforeLastStart = new Date(comparisonToday.getFullYear(), comparisonToday.getMonth() - 2, 1);
+  const lastMonthPeriodStart = dateInputValue(lastMonthStart);
+  const lastMonthPeriodEnd = dateInputValue(new Date(comparisonMonthStart.getFullYear(), comparisonMonthStart.getMonth(), 0));
+  const monthBeforeLastPeriodStart = dateInputValue(monthBeforeLastStart);
+  const monthBeforeLastPeriodEnd = dateInputValue(new Date(lastMonthStart.getFullYear(), lastMonthStart.getMonth(), 0));
+  const comparisonMonthLabel = (date: Date) => new Intl.DateTimeFormat('ar-EG', { month: 'long', year: 'numeric' }).format(date);
   const calculatePeriodFuelRate = (startDate: string, endDate: string) => {
     const monthMovements = selectedRateMovements.filter(({ entry }) => entry.date >= startDate && entry.date <= endDate);
     const totals = monthMovements.reduce((sum, movement) => ({
@@ -1859,10 +1864,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
     }), { distance: 0, actualLiters: 0 });
     return { ...totals, rate: totals.actualLiters > 0 ? totals.distance / totals.actualLiters : 0 };
   };
-  const currentMonthRateSummary = calculatePeriodFuelRate(currentPeriodStart, currentPeriodEnd);
-  const previousMonthRateSummary = calculatePeriodFuelRate(previousPeriodStart, previousPeriodEnd);
-  const monthlyRateChange = previousMonthRateSummary.rate > 0
-    ? ((currentMonthRateSummary.rate - previousMonthRateSummary.rate) / previousMonthRateSummary.rate) * 100
+  const lastMonthRateSummary = calculatePeriodFuelRate(lastMonthPeriodStart, lastMonthPeriodEnd);
+  const monthBeforeLastRateSummary = calculatePeriodFuelRate(monthBeforeLastPeriodStart, monthBeforeLastPeriodEnd);
+  const monthlyRateChange = monthBeforeLastRateSummary.rate > 0
+    ? ((lastMonthRateSummary.rate - monthBeforeLastRateSummary.rate) / monthBeforeLastRateSummary.rate) * 100
     : null;
   const chartRateMovements = selectedRateMovements
     .filter((movement): movement is typeof movement & { rate: number } => movement.rate !== null && Number.isFinite(movement.rate))
@@ -3737,6 +3742,10 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
   );
   const entryCostPreview = Math.round((fuelActualValuePreview ?? 0) + Object.values(expenseAmountPreviews).reduce<number>((sum, amount) => sum + (amount ?? 0), 0));
   const navigationTiles = fleetSections.filter(({ key }) => key !== 'audit' || canManageUsers);
+  const homeTileOrder = ['overview', 'vehicles', 'entries', 'audit', 'routes'];
+  const homeNavigationTiles = navigationTiles
+    .filter(({ key }) => currentUser.role !== 'viewer' || key !== 'entries')
+    .sort((first, second) => homeTileOrder.indexOf(first.key) - homeTileOrder.indexOf(second.key));
   const openSection = navigationTiles.find((section) => section.key === tab)
     || (tab === 'users' ? fleetHomeActions[0] : undefined);
   const navigateToSection = (key: typeof fleetSections[number]['key']) => {
@@ -3945,7 +3954,7 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
       </header>
 
       {tab === 'home' ? <nav className={`fleet-tabs fleet-tabs-home${currentUser.role === 'viewer' ? ' fleet-tabs-home-viewer' : ''}`} aria-label="أقسام متابعة السيارات">
-        {navigationTiles.filter(({ key }) => currentUser.role !== 'viewer' || key !== 'entries').map(({ key, label, description, Icon }) => (
+        {homeNavigationTiles.map(({ key, label, description, Icon }) => (
           <button key={key} type="button" className={`fleet-home-section fleet-home-section-${key}`} onClick={() => {
             setTab(key);
             if (key !== 'vehicles') setSelectedVehicleId(null);
@@ -4566,21 +4575,21 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                   : <p className="fleet-rate-chart-empty">لا توجد حركات لها معدل استهلاك في هذه السيارة.</p>}
               </section>
               <section className="fleet-rate-month-comparison" aria-label="مقارنة معدل الاستهلاك الشهري">
-                <h4>هذا الشهر حتى اليوم vs الفترة المناظرة من الشهر الماضي</h4>
+                <h4>الشهر الماضي ({comparisonMonthLabel(lastMonthStart)}) vs الشهر الأسبق ({comparisonMonthLabel(monthBeforeLastStart)})</h4>
                 <div className="fleet-rate-month-values">
-                  <div><span>هذا الشهر · حتى {formatDateArabic(currentPeriodEnd)}</span><strong>{rateFormat.format(currentMonthRateSummary.rate)} <small>كم/لتر</small></strong></div>
-                  <div><span>الشهر الماضي · حتى {formatDateArabic(previousPeriodEnd)}</span><strong>{rateFormat.format(previousMonthRateSummary.rate)} <small>كم/لتر</small></strong></div>
+                  <div><span>الشهر الماضي · كامل</span><strong>{rateFormat.format(lastMonthRateSummary.rate)} <small>كم/لتر</small></strong></div>
+                  <div><span>الشهر الأسبق · كامل</span><strong>{rateFormat.format(monthBeforeLastRateSummary.rate)} <small>كم/لتر</small></strong></div>
                 </div>
-                <p className={currentMonthRateSummary.rate === 0 ? 'is-unavailable' : monthlyRateChange === null ? 'is-unavailable' : monthlyRateChange > 0 ? 'is-improved' : monthlyRateChange < 0 ? 'is-declined' : 'is-unchanged'}>
-                  {currentMonthRateSummary.rate === 0
-                    ? 'لا توجد حركات مسجلة لهذا الشهر'
+                <p className={lastMonthRateSummary.rate === 0 ? 'is-unavailable' : monthlyRateChange === null ? 'is-unavailable' : monthlyRateChange > 0 ? 'is-improved' : monthlyRateChange < 0 ? 'is-declined' : 'is-unchanged'}>
+                  {lastMonthRateSummary.rate === 0
+                    ? 'لا توجد حركات مسجلة للشهر الماضي'
                     : monthlyRateChange === null
                     ? 'لا توجد بيانات كافية للمقارنة'
                     : monthlyRateChange > 0
                       ? `تحسن ${rateFormat.format(monthlyRateChange)}٪`
                       : monthlyRateChange < 0
                         ? `تدهور ${rateFormat.format(Math.abs(monthlyRateChange))}٪`
-                        : 'لا يوجد تغير عن الشهر الماضي'}
+                        : 'لا يوجد تغير عن الشهر الأسبق'}
                 </p>
               </section>
             </div>
@@ -4600,30 +4609,21 @@ const CarFuelPage: React.FC<CarFuelPageProps> = ({ onLogout, currentUser }) => {
                 </div>
                 <div className="entries-column-list">
                   {detailColumns.map(({ key, label }) => <label key={key}>
-                    <input type="checkbox" checked={selectedDetailColumnVisibility[key] !== false} onChange={(event) => setDetailColumnVisibilityByVehicle((preferences) => ({
+                    <input type="checkbox" checked={selectedDetailColumnVisibility[key] !== false} onChange={(event) => setDetailColumnVisibility((preferences) => ({
                       ...preferences,
-                      [selectedSummary.vehicle.id]: {
-                        ...(preferences[selectedSummary.vehicle.id] || {}),
-                        [key]: event.target.checked,
-                      },
+                      [key]: event.target.checked,
                     }))} />
                     {label}
                   </label>)}
                 </div>
                 <div className="entries-column-bulk-actions">
-                  <button type="button" className="entries-column-reset" onClick={() => setDetailColumnVisibilityByVehicle((preferences) => ({
-                    ...preferences,
-                    [selectedSummary.vehicle.id]: { ...defaultDetailColumnVisibility },
-                  }))}>إظهار الكل</button>
-                  <button type="button" className="entries-column-reset" onClick={() => setDetailColumnVisibilityByVehicle((preferences) => ({
-                    ...preferences,
-                    [selectedSummary.vehicle.id]: Object.fromEntries(detailColumns.map(({ key }) => [key, false])),
-                  }))}>إخفاء الكل</button>
+                  <button type="button" className="entries-column-reset" onClick={() => setDetailColumnVisibility({ ...defaultDetailColumnVisibility })}>إظهار الكل</button>
+                  <button type="button" className="entries-column-reset" onClick={() => setDetailColumnVisibility(Object.fromEntries(detailColumns.map(({ key }) => [key, false])) as Record<DetailColumnKey, boolean>)}>إخفاء الكل</button>
                 </div>
                 </div>
               </>}
             </div>
-            <span>إعداد مستقل للسيارة المحددة ويُحفظ تلقائيًا</span>
+            <span>إعداد عام لكل السيارات ويُحفظ تلقائيًا</span>
           </div>}
           <div className="fleet-table-wrap fleet-detail-table-wrap">
             <table className="fleet-table ledger-table fleet-detail-ledger">
